@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
-import { Lock, UserPlus, BookOpen, FileText, CheckSquare, Home } from 'lucide-react';
+import { supabase } from './supabase'; // <-- Jembatan Supabase dipanggil di sini
+import { Lock, UserPlus, BookOpen, FileText, CheckSquare, Home, RefreshCw } from 'lucide-react';
 
 // --- KOMPONEN KEAMANAN (PIN) ---
 function AuthScreen({ onUnlock }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   
-  // PIN default untuk percobaan awal: 1234
   const handleLogin = (e) => {
     e.preventDefault();
     if (pin === '1234') {
@@ -52,6 +52,7 @@ function AuthScreen({ onUnlock }) {
 function HalamanMurid() {
   const [nama, setNama] = useState('');
   const [kelas, setKelas] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
   const murid = useLiveQuery(() => db.murid.toArray(), []);
 
   const simpanMurid = async (e) => {
@@ -61,16 +62,55 @@ function HalamanMurid() {
     setNama(''); setKelas('');
   };
 
+  // Fungsi untuk Sinkronisasi ke Supabase
+  const sinkronData = async () => {
+    setIsSyncing(true);
+    try {
+      // 1. Ambil data dari lokal HP
+      const dataLokal = await db.murid.toArray();
+      
+      // 2. Kirim ke Cloud Supabase (Upsert: tambah baru atau update yang lama)
+      if (dataLokal.length > 0) {
+        const { error } = await supabase.from('murid').upsert(dataLokal);
+        if (error) throw error;
+      }
+      
+      // 3. Tarik data terbaru dari Cloud untuk memastikan sama
+      const { data: dataCloud, error: errCloud } = await supabase.from('murid').select('*');
+      if (errCloud) throw errCloud;
+      
+      // 4. Simpan kembali ke lokal HP
+      if (dataCloud) {
+        await db.murid.bulkPut(dataCloud);
+      }
+      
+      alert('Berhasil! Data aman di Cloud Supabase ☁️');
+    } catch (error) {
+      alert('Gagal sinkron: ' + error.message);
+    }
+    setIsSyncing(false);
+  };
+
   return (
     <div className="pb-24 pt-6 px-4">
-      <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
-        <UserPlus size={24} className="text-emerald-600"/> Data Murid
-      </h2>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+          <UserPlus size={24} className="text-emerald-600"/> Data Murid
+        </h2>
+        <button 
+          onClick={sinkronData} 
+          disabled={isSyncing}
+          className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 border border-blue-100 active:bg-blue-100"
+        >
+          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+          {isSyncing ? 'Proses...' : 'Sinkron Cloud'}
+        </button>
+      </div>
       
       <form onSubmit={simpanMurid} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-col gap-3">
         <input type="text" placeholder="Nama Lengkap Murid" className="p-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500" value={nama} onChange={e => setNama(e.target.value)} />
         <input type="text" placeholder="Kelas (contoh: 7A)" className="p-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500" value={kelas} onChange={e => setKelas(e.target.value)} />
-        <button type="submit" className="bg-emerald-600 text-white font-semibold p-3 rounded-lg hover:bg-emerald-700">Tambah Murid</button>
+        <button type="submit" className="bg-emerald-600 text-white font-semibold p-3 rounded-lg hover:bg-emerald-700">Tambah Murid Lokal</button>
       </form>
 
       <div className="grid gap-3">
@@ -104,9 +144,7 @@ export default function App() {
       case 'dashboard': return (
         <div className="p-6 pb-24">
           <div className="bg-emerald-600 rounded-2xl p-6 text-white mb-6 shadow-lg shadow-emerald-600/20 relative overflow-hidden">
-            {/* Dekorasi IT Modern Pattern di latar belakang */}
             <div className="absolute opacity-10 top-0 right-0 w-32 h-32 bg-white rounded-full -mr-10 -mt-10"></div>
-            
             <h2 className="text-2xl font-bold relative z-10">Selamat Datang</h2>
             <p className="text-emerald-100 text-sm opacity-90 mt-1 relative z-10">Cabang Jember Timur</p>
             <p className="text-emerald-100 text-xs opacity-80 mt-3 border-t border-emerald-500/50 pt-2 relative z-10">
@@ -121,7 +159,7 @@ export default function App() {
             </div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
               <p className="text-slate-500 text-xs font-semibold mb-1">Status Data</p>
-              <p className="text-sm font-bold text-emerald-600 mt-1 bg-emerald-50 py-1 px-2 rounded inline-block">Tersimpan Lokal</p>
+              <p className="text-sm font-bold text-emerald-600 mt-1 bg-emerald-50 py-1 px-2 rounded inline-block">Hybrid (Aman)</p>
             </div>
           </div>
         </div>
