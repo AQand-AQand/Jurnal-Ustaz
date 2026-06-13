@@ -1,10 +1,9 @@
 import Dexie from 'dexie';
 
-export const db = new Dexie('DatabaseBukuUstaz');
+export const db = new Dexie('BukuUstazDB');
 
-// Skema tabel database (id otomatis bertambah)
-db.version(1).stores({
+// Versi ditingkatkan ke 3 untuk memastikan tabel baru terbuat dengan bersih
+db.version(3).stores({
   murid: '++id, nama, kelas',
-  absensi: '++id, murid_id, tanggal, status, is_synced',
-  jurnal: '++id, kelas, materi, tanggal, is_synced'
+  absensi: '++id, murid_id, status, tanggal'
 });
