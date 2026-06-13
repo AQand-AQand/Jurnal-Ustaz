@@ -2,8 +2,8 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('BukuUstazDB');
 
-// Versi ditingkatkan ke 3 untuk memastikan tabel baru terbuat dengan bersih
-db.version(3).stores({
+// Naik ke versi 4 untuk memastikan pembaruan sistem berjalan lancar di browser
+db.version(4).stores({
   murid: '++id, nama, kelas',
   absensi: '++id, murid_id, status, tanggal'
 });
