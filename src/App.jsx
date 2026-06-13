@@ -2,416 +2,443 @@ import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { supabase } from './supabase';
-import { 
-  Lock, UserPlus, BookOpen, FileText, CheckSquare, Home, RefreshCw, 
-  Award, FileQuestion, Download, Share2, BookMarked, UserCircle, Save, Check
-} from 'lucide-react';
+import { Lock, UserPlus, BookOpen, CheckSquare, Home, Search, Calendar, Trash2, Download, Filter, RefreshCw, Layers, FileText, Check } from 'lucide-react';
 
-// --- KOMPONEN KEAMANAN (PIN) ---
-function AuthScreen({ onUnlock }) {
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState(false);
+export default function App() {
+  // Smart Session Lock (Menggunakan sessionStorage agar tidak melelahkan saat refresh halaman)
+  const [isLocked, setIsLocked] = useState(() => {
+    return sessionStorage.getItem('ustaz_auth') !== 'true';
+  });
   
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (pin === '1234') onUnlock(); 
-    else { setError(true); setPin(''); }
-  };
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-6">
-      <div className="bg-slate-800 p-8 rounded-3xl shadow-2xl w-full max-w-sm text-center border border-slate-700">
-        <div className="bg-emerald-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_20px_rgba(16,185,129,0.4)]">
-          <Lock size={32} className="text-white" />
-        </div>
-        <h1 className="text-3xl font-extrabold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Buku Ustaz</h1>
-        <p className="text-slate-400 text-sm mb-8">Masukkan PIN Keamanan</p>
-        <form onSubmit={handleLogin}>
-          <input 
-            type="password" maxLength="4" placeholder="••••" 
-            className="w-full text-center text-4xl tracking-[0.5em] p-4 rounded-2xl bg-slate-900/50 border border-slate-600 mb-4 outline-none focus:border-emerald-500 transition-colors" 
-            value={pin} onChange={(e) => { setPin(e.target.value); setError(false); }} autoFocus 
-          />
-          {error && <p className="text-red-400 text-sm mb-4 animate-bounce">PIN Tidak Valid!</p>}
-          <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 transition-colors py-4 rounded-2xl font-bold text-lg shadow-lg">Buka Kunci</button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// --- FITUR 1: ABSENSI ---
-function HalamanAbsensi({ murid }) {
-  const [tanggal, setTanggal] = useState(new Date().toISOString().split('T')[0]);
-  const absensiHariIni = useLiveQuery(() => db.absensi.where('tanggal').equals(tanggal).toArray(), [tanggal]);
-
-  const tandaiAbsen = async (muridId, status) => {
-    const dataAda = await db.absensi.where({ murid_id: muridId, tanggal }).first();
-    if (dataAda) {
-      await db.absensi.update(dataAda.id, { status, is_synced: false });
-    } else {
-      await db.absensi.add({ murid_id: muridId, tanggal, status, is_synced: false });
-    }
-  };
-
-  const getStatus = (muridId) => {
-    const absen = absensiHariIni?.find(a => a.murid_id === muridId);
-    return absen ? absen.status : null;
-  };
-
-  return (
-    <div className="pb-24 pt-6 px-4 animate-in fade-in slide-in-from-bottom-4">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Absensi</h2>
-        <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} className="bg-white border border-slate-200 text-slate-600 text-sm rounded-lg p-2 shadow-sm focus:outline-emerald-500" />
-      </div>
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 divide-y overflow-hidden">
-        {murid?.map(m => {
-          const statusSaatIni = getStatus(m.id);
-          return (
-            <div key={m.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
-              <div>
-                <span className="font-bold text-slate-800 block">{m.nama}</span>
-                <span className="text-xs text-slate-500">Kelas: {m.kelas}</span>
-              </div>
-              <div className="flex gap-1">
-                {['H', 'I', 'S', 'A'].map(s => (
-                  <button 
-                    key={s} 
-                    onClick={() => tandaiAbsen(m.id, s)} 
-                    className={`w-9 h-9 rounded-xl font-bold transition-all text-sm ${
-                      statusSaatIni === s 
-                        ? (s === 'H' ? 'bg-emerald-500 text-white shadow-md' : s === 'I' ? 'bg-blue-500 text-white shadow-md' : s === 'S' ? 'bg-amber-500 text-white shadow-md' : 'bg-red-500 text-white shadow-md')
-                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-        {(!murid || murid.length === 0) && <div className="p-8 text-center text-slate-400">Belum ada data murid.</div>}
-      </div>
-    </div>
-  );
-}
-
-// --- FITUR 2: BUKU SAKU USTAZ ---
-function BukuSaku() {
-  const [tab, setTab] = useState('batas');
-  const [mapel, setMapel] = useState('');
-  const [isi, setIsi] = useState('');
-  const [notif, setNotif] = useState('');
-  const jurnal = useLiveQuery(() => db.jurnal.where('kategori').equals(tab).reverse().sortBy('tanggal'), [tab]);
-
-  const simpanJurnal = async (e) => {
-    e.preventDefault();
-    if (!isi) return;
-    await db.jurnal.add({ kategori: tab, mapel, isi, tanggal: new Date().toISOString(), is_synced: false });
-    setMapel(''); setIsi('');
-    setNotif('Tersimpan!');
-    setTimeout(() => setNotif(''), 2000);
-  };
-
-  const tabs = [
-    { id: 'batas', label: 'Batas Pelajaran' },
-    { id: 'perilaku', label: 'Catatan Perilaku' },
-    { id: 'pr', label: 'Tugas/PR' }
-  ];
-
-  return (
-    <div className="pb-24 pt-6 px-4 animate-in fade-in">
-      <h2 className="text-2xl font-bold text-slate-800 mb-4">Buku Saku</h2>
-      <div className="flex overflow-x-auto pb-2 mb-4 gap-2 no-scrollbar">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2 rounded-full whitespace-nowrap font-medium text-sm transition-all ${tab === t.id ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <form onSubmit={simpanJurnal} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-4 flex flex-col gap-3">
-        {tab === 'batas' && <input type="text" placeholder="Mata Pelajaran" value={mapel} onChange={e => setMapel(e.target.value)} className="p-3 bg-slate-50 border rounded-xl outline-emerald-500" required />}
-        <textarea placeholder={`Tulis catatan ${tab} di sini...`} value={isi} onChange={e => setIsi(e.target.value)} className="p-3 bg-slate-50 border rounded-xl h-24 outline-emerald-500" required></textarea>
-        <button type="submit" className="bg-emerald-600 text-white font-bold p-3 rounded-xl flex justify-center items-center gap-2">
-          {notif ? <><Check size={18} /> {notif}</> : <><Save size={18} /> Simpan Catatan</>}
-        </button>
-      </form>
-
-      <div className="grid gap-3">
-        <h3 className="text-sm font-bold text-slate-500 ml-2">Riwayat</h3>
-        {jurnal?.map(j => (
-          <div key={j.id} className="bg-white p-4 rounded-xl border border-slate-100 text-sm">
-            <div className="flex justify-between items-start mb-2 border-b pb-2">
-              <span className="font-bold text-emerald-700">{j.mapel || 'Umum'}</span>
-              <span className="text-xs text-slate-400">{new Date(j.tanggal).toLocaleDateString('id-ID')}</span>
-            </div>
-            <p className="text-slate-700 whitespace-pre-wrap">{j.isi}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// --- FITUR 3: LABSOMA (SOAL) ---
-function Labsoma() {
-  const [tab, setTab] = useState('buat');
-  const [judul, setJudul] = useState('');
-  const [isi, setIsi] = useState('');
-  const [notif, setNotif] = useState(false);
-  const bankSoal = useLiveQuery(() => db.soal.reverse().sortBy('tanggal'), []);
-
-  const simpanSoal = async (e) => {
-    e.preventDefault();
-    if(!judul || !isi) return;
-    await db.soal.add({ judul, isi, tipe: 'essay', tanggal: new Date().toISOString() });
-    setJudul(''); setIsi('');
-    setNotif(true); setTimeout(() => setNotif(false), 2000);
-  };
+  const [tab, setTab] = useState('dashboard');
+  const [subTabMurid, setSubTabMurid] = useState('santri');
   
-  return (
-    <div className="pb-24 pt-6 px-4 animate-in fade-in">
-      <h2 className="text-2xl font-bold text-slate-800 mb-4">Labsoma</h2>
-      <div className="flex gap-2 mb-6 bg-slate-200/50 p-1 rounded-xl">
-        <button onClick={() => setTab('buat')} className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-all ${tab === 'buat' ? 'bg-white text-emerald-600 shadow' : 'text-slate-500'}`}>Buat Soal</button>
-        <button onClick={() => setTab('bank')} className={`flex-1 py-2 rounded-lg font-semibold text-sm transition-all ${tab === 'bank' ? 'bg-white text-emerald-600 shadow' : 'text-slate-500'}`}>Bank Soal ({bankSoal?.length || 0})</button>
-      </div>
-
-      {tab === 'buat' ? (
-        <form onSubmit={simpanSoal} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-4">
-          <input type="text" placeholder="Judul Ujian / Kuis" value={judul} onChange={e=>setJudul(e.target.value)} className="p-3 bg-slate-50 border rounded-xl outline-emerald-500" required/>
-          <textarea placeholder="Ketik soal di sini..." value={isi} onChange={e=>setIsi(e.target.value)} className="p-3 bg-slate-50 border rounded-xl h-40 outline-emerald-500" required></textarea>
-          <button type="submit" className="bg-slate-800 text-white font-bold p-3 rounded-xl transition-all">
-             {notif ? 'Tersimpan ke Bank Soal!' : 'Tambahkan ke Bank Soal'}
-          </button>
-        </form>
-      ) : (
-        <div className="grid gap-3">
-          {bankSoal?.map(s => (
-            <div key={s.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-bold text-slate-700">{s.judul}</h4>
-                <FileQuestion className="text-emerald-500" size={18} />
-              </div>
-              <p className="text-xs text-slate-500 bg-slate-50 p-2 rounded line-clamp-2">{s.isi}</p>
-            </div>
-          ))}
-          {(!bankSoal || bankSoal.length === 0) && <p className="text-center text-slate-400 mt-10">Bank soal kosong.</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- FITUR 4: NILAI & EXPORT ---
-function HalamanNilai({ murid }) {
-  const nilai = useLiveQuery(() => db.nilai.toArray(), []);
-
-  const updateNilai = async (muridId, jenis, value) => {
-    const valNum = parseInt(value) || 0;
-    const dataAda = await db.nilai.where({ murid_id: muridId }).first();
-    if (dataAda) {
-      await db.nilai.update(dataAda.id, { [jenis]: valNum, is_synced: false });
-    } else {
-      await db.nilai.add({ murid_id: muridId, ulangan: 0, tulis: 0, lisan: 0, [jenis]: valNum, is_synced: false });
-    }
-  };
-
-  const getNilai = (muridId, jenis) => {
-    const data = nilai?.find(n => n.murid_id === muridId);
-    return data ? data[jenis] : '';
-  };
-
-  const exportWA = () => {
-    let text = "*LAPORAN NILAI SANTRI*\n\n";
-    murid?.forEach(m => {
-      const n = nilai?.find(x => x.murid_id === m.id) || { ulangan:0, tulis:0, lisan:0 };
-      text += `👤 *${m.nama}* (${m.kelas})\n- Ulangan: ${n.ulangan}\n- Tulis: ${n.tulis}\n- Lisan: ${n.lisan}\n\n`;
-    });
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`);
-  };
-
-  return (
-    <div className="pb-24 pt-6 px-4 animate-in fade-in">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Rekap Nilai</h2>
-        <div className="flex gap-2">
-          <button onClick={() => window.print()} className="bg-red-50 text-red-600 p-2 rounded-lg shadow-sm" title="Print/PDF"><Download size={20}/></button>
-          <button onClick={exportWA} className="bg-green-50 text-green-600 p-2 rounded-lg shadow-sm" title="Kirim WA"><Share2 size={20}/></button>
-        </div>
-      </div>
-      
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-slate-50 text-slate-600 border-b">
-              <tr>
-                <th className="p-4 font-semibold">Nama Murid</th>
-                <th className="p-4 font-semibold text-center">Ulangan</th>
-                <th className="p-4 font-semibold text-center">Tulis</th>
-                <th className="p-4 font-semibold text-center">Lisan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {murid?.map(m => (
-                <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4 font-medium text-slate-800">{m.nama}</td>
-                  <td className="p-2"><input type="number" defaultValue={getNilai(m.id, 'ulangan')} onBlur={(e) => updateNilai(m.id, 'ulangan', e.target.value)} className="w-16 p-2 bg-slate-100 rounded text-center focus:bg-white focus:ring-1 outline-emerald-500" placeholder="-" /></td>
-                  <td className="p-2"><input type="number" defaultValue={getNilai(m.id, 'tulis')} onBlur={(e) => updateNilai(m.id, 'tulis', e.target.value)} className="w-16 p-2 bg-slate-100 rounded text-center focus:bg-white focus:ring-1 outline-emerald-500" placeholder="-" /></td>
-                  <td className="p-2"><input type="number" defaultValue={getNilai(m.id, 'lisan')} onBlur={(e) => updateNilai(m.id, 'lisan', e.target.value)} className="w-16 p-2 bg-slate-100 rounded text-center focus:bg-white focus:ring-1 outline-emerald-500" placeholder="-" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <p className="text-xs text-slate-400 mt-4 text-center">*Nilai otomatis tersimpan setelah mengetik angka</p>
-    </div>
-  );
-}
-
-// --- FITUR 5: PROFIL MURID ---
-function ProfilMurid({ murid }) {
-  const [nama, setNama] = useState('');
-  const [kelas, setKelas] = useState('');
+  // State Utama Aplikasi
+  const [tanggalAbsen, setTanggalAbsen] = useState(new Date().toISOString().split('T')[0]);
+  const [pencarian, setPencarian] = useState('');
+  const [filterKelas, setFilterKelas] = useState('Semua');
+  const [kelasTerpilihForm, setKelasTerpilihForm] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // State Tambahan untuk Fitur Jurnal Mengajar
+  const [materiInput, setMateriInput] = useState('');
+  const [statusSimpanJurnal, setStatusSimpanJurnal] = useState(false);
 
-  const simpanMurid = async (e) => {
-    e.preventDefault();
-    if (!nama || !kelas) return;
-    await db.murid.add({ nama, kelas });
-    setNama(''); setKelas('');
-  };
+  // Ambil Data Real-Time (Offline-First via Dexie.js)
+  const murid = useLiveQuery(() => db.murid.toArray(), []);
+  const daftarKelas = useLiveQuery(() => db.kelas.toArray(), []);
+  const semuaAbsensi = useLiveQuery(() => db.absensi.where('tanggal').equals(tanggalAbsen).toArray(), [tanggalAbsen]);
+  const semuaJurnal = useLiveQuery(() => db.jurnal.where('tanggal').equals(tanggalAbsen).toArray(), [tanggalAbsen]);
 
+  // Efek Otomatis Mengisi Pilihan Kelas Default di Form
+  useEffect(() => {
+    if (daftarKelas && daftarKelas.length > 0 && !kelasTerpilihForm) {
+      setKelasTerpilihForm(daftarKelas[0].nama);
+    }
+  }, [daftarKelas]);
+
+  // Efek Otomatis Memuat Jurnal Materi saat Kelas atau Tanggal Diubah
+  useEffect(() => {
+    if (filterKelas !== 'Semua') {
+      const jurnalAda = semuaJurnal?.find(j => j.kelas === filterKelas);
+      setMateriInput(jurnalAda ? jurnalAda.materi : '');
+    } else {
+      setMateriInput('');
+    }
+    setStatusSimpanJurnal(false);
+  }, [filterKelas, tanggalAbsen, semuaJurnal]);
+
+  // --- LOGIKA UTAMA SINKRONISASI (ONLINE & OFFLINE) ---
   const sinkronData = async () => {
     setIsSyncing(true);
     try {
-      const dataLokal = await db.murid.toArray();
-      if (dataLokal.length > 0) await supabase.from('murid').upsert(dataLokal);
-      const { data } = await supabase.from('murid').select('*');
-      if (data) await db.murid.bulkPut(data);
-    } catch (e) { 
-      console.error(e); 
+      const lokalKelas = await db.kelas.toArray();
+      const lokalMurid = await db.murid.toArray();
+      const lokalAbsen = await db.absensi.toArray();
+      const lokalJurnal = await db.jurnal.toArray();
+
+      // Unggah Data Lokal ke Supabase Cloud (Menggunakan Upsert berbasis ID)
+      if (lokalKelas.length > 0) await supabase.from('kelas').upsert(lokalKelas);
+      if (lokalMurid.length > 0) await supabase.from('murid').upsert(lokalMurid);
+      if (lokalAbsen.length > 0) await supabase.from('absensi').upsert(lokalAbsen);
+      if (lokalJurnal.length > 0) await supabase.from('jurnal').upsert(lokalJurnal);
+
+      // Unduh Data Cloud Terbaru untuk Disimpan ke Memori HP (Offline Backup)
+      const { data: cloudKelas } = await supabase.from('kelas').select('*');
+      const { data: cloudMurid } = await supabase.from('murid').select('*');
+      const { data: cloudAbsen } = await supabase.from('absensi').select('*');
+      const { data: cloudJurnal } = await supabase.from('jurnal').select('*');
+
+      if (cloudKelas) await db.kelas.bulkPut(cloudKelas);
+      if (cloudMurid) await db.murid.bulkPut(cloudMurid);
+      if (cloudAbsen) await db.absensi.bulkPut(cloudAbsen);
+      if (cloudJurnal) await db.jurnal.bulkPut(cloudJurnal);
+
+      alert('Alhamdulillah! Sinkronisasi berhasil. Data HP & Cloud sudah sama.');
+    } catch (error) {
+      console.error(error);
+      alert('Koneksi Gagal: Pastikan kuota internet aktif / settingan Supabase benar.');
     }
     setIsSyncing(false);
   };
 
-  return (
-    <div className="pb-24 pt-6 px-4 animate-in fade-in">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-slate-800">Data Murid</h2>
-        <button onClick={sinkronData} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm active:scale-95 transition-transform">
-          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} /> Sinkron
-        </button>
-      </div>
-      
-      <form onSubmit={simpanMurid} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-6 flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-4">
-          <input type="text" placeholder="Nama Lengkap" className="col-span-2 p-3 bg-slate-50 border rounded-xl outline-emerald-500" value={nama} onChange={e => setNama(e.target.value)} required />
-          <input type="text" placeholder="Kelas" className="col-span-2 p-3 bg-slate-50 border rounded-xl outline-emerald-500" value={kelas} onChange={e => setKelas(e.target.value)} required />
-        </div>
-        <button type="submit" className="bg-slate-800 text-white font-bold p-4 rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform">
-          <UserPlus size={20} /> Tambah Murid
-        </button>
-      </form>
-
-      <div className="grid gap-3">
-        <span className="text-sm font-bold text-slate-500">Daftar Santri ({murid?.length || 0})</span>
-        {murid?.map(m => (
-          <div key={m.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold text-xl">
-              {m.nama.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <span className="font-bold text-slate-800 block text-lg">{m.nama}</span>
-              <span className="text-sm text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded">{m.kelas}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// --- KOMPONEN UTAMA (APP) ---
-export default function App() {
-  const [isLocked, setIsLocked] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const murid = useLiveQuery(() => db.murid.toArray(), []);
-
-  if (isLocked) return <AuthScreen onUnlock={() => setIsLocked(false)} />;
-
-  const menuUtama = [
-    { id: 'absen', label: 'Absensi', icon: CheckSquare, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { id: 'bukusaku', label: 'Buku Saku', icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { id: 'labsoma', label: 'Labsoma', icon: BookMarked, color: 'text-purple-500', bg: 'bg-purple-50' },
-    { id: 'nilai', label: 'Nilai', icon: Award, color: 'text-amber-500', bg: 'bg-amber-50' },
-    { id: 'profil', label: 'Profil Murid', icon: UserCircle, color: 'text-rose-500', bg: 'bg-rose-50' },
-  ];
-
-  const renderContent = () => {
-    switch(activeTab) {
-      case 'dashboard': return (
-        <div className="p-6 animate-in fade-in">
-          <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-3xl p-8 text-white mb-8 shadow-lg shadow-emerald-600/30">
-            <h2 className="text-3xl font-extrabold mb-1">Ahlan wa Sahlan</h2>
-            <p className="text-emerald-100 font-medium">Buku Administrasi Ustaz</p>
-          </div>
-          
-          <h3 className="font-bold text-slate-800 mb-4 text-lg">Modul Aplikasi</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {menuUtama.map(menu => (
-              <button 
-                key={menu.id} onClick={() => setActiveTab(menu.id)}
-                className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center gap-3 active:scale-95 transition-transform"
-              >
-                <div className={`p-4 rounded-full ${menu.bg} ${menu.color}`}>
-                  <menu.icon size={28} />
-                </div>
-                <span className="font-semibold text-slate-700 text-sm">{menu.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-      case 'absen': return <HalamanAbsensi murid={murid} />;
-      case 'bukusaku': return <BukuSaku />;
-      case 'labsoma': return <Labsoma />;
-      case 'nilai': return <HalamanNilai murid={murid} />;
-      case 'profil': return <ProfilMurid murid={murid} />;
-      default: return null;
+  // --- KELOLA DATA KELAS ---
+  const tambahKelas = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const namaKelas = formData.get('namaKelas')?.trim();
+    if (namaKelas) {
+      const ada = await db.kelas.where('nama').equalsIgnoreCase(namaKelas).first();
+      if (ada) return alert('Nama kelas tersebut sudah terdaftar!');
+      await db.kelas.add({ nama: namaKelas });
+      e.target.reset();
     }
   };
 
+  const hapusKelas = async (id, nama) => {
+    if (window.confirm(`Hapus kelas "${nama}"? Data murid di dalamnya tidak terhapus, namun status kelas mereka akan kosong.`)) {
+      await db.kelas.delete(id);
+    }
+  };
+
+  // --- KELOLA DATA MURID ---
+  const tambahMurid = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const nama = formData.get('nama')?.trim();
+    if (!kelasTerpilihForm) return alert('Silakan buat data kelas terlebih dahulu!');
+    if (nama && kelasTerpilihForm) {
+      await db.murid.add({ nama, kelas: kelasTerpilihForm });
+      e.target.reset();
+      alert('Murid berhasil disimpan!');
+    }
+  };
+
+  const hapusMurid = async (id, nama) => {
+    if (window.confirm(`Hapus data ${nama}? Semua riwayat absensi anak ini juga akan dibersihkan dari HP.`)) {
+      await db.murid.delete(id);
+      const absensiTerkait = await db.absensi.where('murid_id').equals(id).toArray();
+      await db.absensi.bulkDelete(absensiTerkait.map(a => a.id));
+    }
+  };
+
+  // --- KELOLA ABSENSI & JURNAL MATERI ---
+  const catatAbsen = async (muridId, status) => {
+    const dataAda = await db.absensi.where({ murid_id: muridId, tanggal: tanggalAbsen }).first();
+    if (dataAda) {
+      await db.absensi.update(dataAda.id, { status });
+    } else {
+      await db.absensi.add({ murid_id: muridId, status, tanggal: tanggalAbsen });
+    }
+  };
+
+  const simpanJurnalMateri = async () => {
+    if (filterKelas === 'Semua') return alert('Silakan pilih salah satu kelas terlebih dahulu!');
+    const dataAda = await db.jurnal.where({ kelas: filterKelas, tanggal: tanggalAbsen }).first();
+    if (dataAda) {
+      await db.jurnal.update(dataAda.id, { materi: materiInput });
+    } else {
+      await db.jurnal.add({ kelas: filterKelas, tanggal: tanggalAbsen, materi: materiInput });
+    }
+    setStatusSimpanJurnal(true);
+    setTimeout(() => setStatusSimpanJurnal(false), 2050);
+  };
+
+  // --- SISTEM EKSPOR DATA KE LAPORAN EXCEL (.CSV) ---
+  const eksporKeExcel = async () => {
+    const allMurid = await db.murid.toArray();
+    const allAbsen = await db.absensi.toArray();
+    const allJurnal = await db.jurnal.toArray();
+    
+    if (allAbsen.length === 0) return alert('Belum ada rekaman absensi untuk diekspor!');
+
+    let csv = "\uFEFF"; // Kode khusus BOM agar Microsoft Excel langsung membaca huruf/spasi Indonesia dengan rapi
+    csv += "Tanggal,Nama Murid,Kelas,Status Kehadiran,Materi Yang Diajarkan Hari Itu\n";
+    
+    allAbsen.sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+    allAbsen.forEach(a => {
+      const m = allMurid.find(m => m.id === a.murid_id);
+      if (m) {
+        const statusFull = a.status === 'H' ? 'Hadir' : a.status === 'I' ? 'Izin' : a.status === 'S' ? 'Sakit' : 'Alfa';
+        const jurnalMateri = allJurnal.find(j => j.kelas === m.kelas && j.tanggal === a.tanggal);
+        const teksMateri = jurnalMateri ? jurnalMateri.materi.replace(/"/g, '""') : '-';
+        
+        csv += `${a.tanggal},"${m.nama}","${m.kelas}",${statusFull},"${teksMateri}"\n`;
+      }
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Laporan_Lengkap_Absensi_Dan_Jurnal_Mengajar.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- PROSES SARINGAN DATA (FILTER) ---
+  const muridDifilter = murid?.filter(m => {
+    const cocokNama = m.nama.toLowerCase().includes(pencarian.toLowerCase());
+    const cocokKelas = filterKelas === 'Semua' || m.kelas === filterKelas;
+    return cocokNama && cocokKelas;
+  }) || [];
+  
+  const absensiSesuaiFilter = semuaAbsensi?.filter(a => {
+    const m = murid?.find(m => m.id === a.murid_id);
+    return m && (filterKelas === 'Semua' || m.kelas === filterKelas);
+  }) || [];
+
+  const totalHadir = absensiSesuaiFilter.filter(a => a.status === 'H').length || 0;
+  const totalIzin = absensiSesuaiFilter.filter(a => a.status === 'I').length || 0;
+  const totalSakit = absensiSesuaiFilter.filter(a => a.status === 'S').length || 0;
+  const totalAlfa = absensiSesuaiFilter.filter(a => a.status === 'A').length || 0;
+
+  // --- AKSES LAYAR KUNCI (PIN) ---
+  const handlePinChange = (e) => {
+    if (e.target.value === '1234') {
+      sessionStorage.setItem('ustaz_auth', 'true');
+      setIsLocked(false);
+    }
+  };
+
+  if (isLocked) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 p-6 text-white">
+      <div className="bg-emerald-500 w-16 h-16 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30">
+        <Lock size={32} className="text-white" />
+      </div>
+      <h1 className="text-3xl font-black mb-1 tracking-tight">Buku Ustaz</h1>
+      <p className="text-slate-400 mb-8 text-xs font-semibold uppercase tracking-widest">Wilayah Jember • Cabang Jember Timur</p>
+      
+      <input type="password" placeholder="PIN" maxLength="4" 
+             className="text-black p-4 w-full max-w-sm rounded-2xl text-center mb-4 text-3xl tracking-[1em] outline-none focus:ring-4 focus:ring-emerald-500/50 transition-all shadow-inner" 
+             onChange={handlePinChange} autoFocus />
+      <p className="text-xs text-slate-500">Masukkan PIN Keamanan Aplikasi</p>
+    </div>
+  );
+
   return (
-    <div className="max-w-md mx-auto bg-[#f8fafc] min-h-screen relative shadow-2xl overflow-hidden">
-      <header className="bg-white/90 backdrop-blur-md px-6 py-4 flex justify-between items-center shadow-sm sticky top-0 z-20">
-        <h1 className="font-extrabold text-xl text-slate-800 tracking-tight flex items-center gap-2">
-          <BookOpen className="text-emerald-600" size={24}/> Buku Ustaz
-        </h1>
-        <button onClick={() => setIsLocked(true)} className="p-2 bg-slate-100 rounded-full text-slate-600 active:scale-90 transition-transform">
-          <Lock size={18} />
-        </button>
+    <div className="max-w-md mx-auto min-h-screen bg-slate-50 pb-24 shadow-2xl relative">
+      {/* HEADER UTAMA */}
+      <header className="bg-white px-5 py-4 font-bold border-b text-slate-800 flex items-center justify-between sticky top-0 z-30 shadow-sm">
+        <div className="flex items-center gap-2">
+          <div className="bg-emerald-100 p-2 rounded-xl text-emerald-600"><BookOpen size={20}/></div>
+          <span className="text-lg font-black tracking-tight text-slate-800">Buku Ustaz Pro</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button onClick={sinkronData} disabled={isSyncing} className={`p-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 transition-all ${isSyncing ? 'animate-spin text-emerald-600 bg-emerald-50' : ''}`}>
+            <RefreshCw size={16} />
+          </button>
+          <button onClick={() => { sessionStorage.removeItem('ustaz_auth'); setIsLocked(true); }} className="p-2 text-slate-400 hover:text-rose-600 bg-slate-100 rounded-lg transition-colors"><Lock size={16} /></button>
+        </div>
       </header>
       
-      <main className="min-h-screen">{renderContent()}</main>
-      
-      <nav className="bg-white border-t border-slate-200 fixed bottom-0 w-full max-w-md flex justify-around px-2 py-3 pb-safe z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-        {[ 
-          {id:'dashboard', icon:Home, label:'Home'}, 
-          {id:'absen', icon:CheckSquare, label:'Absen'}, 
-          {id:'nilai', icon:Award, label:'Nilai'}, 
-          {id:'profil', icon:UserCircle, label:'Murid'} 
-        ].map(item => (
-          <button 
-            key={item.id} onClick={() => setActiveTab(item.id)} 
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${activeTab === item.id ? 'text-emerald-600 scale-110' : 'text-slate-400'}`}
-          >
-            <item.icon size={22} strokeWidth={activeTab === item.id ? 2.5 : 2} />
-            <span className="text-[10px] font-bold">{item.label}</span>
+      <main className="p-4 space-y-4">
+        {/* ================= TAB 1: BERANDA ================= */}
+        {tab === 'dashboard' && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            <div className="p-6 bg-gradient-to-br from-emerald-600 to-teal-800 text-white rounded-3xl shadow-md relative overflow-hidden">
+              <p className="text-emerald-200 text-xs font-bold uppercase tracking-wider mb-1">Database Aplikasi Umum</p>
+              <h2 className="text-2xl font-black mb-4">Sistem Jurnal &amp; Absen</h2>
+              <div className="grid grid-cols-2 gap-2 border-t border-white/20 pt-4 mt-2">
+                <div>
+                  <p className="text-emerald-200 text-xs">Total Semua Murid</p>
+                  <p className="text-2xl font-black">{murid?.length || 0} <span className="text-xs font-normal">Santri</span></p>
+                </div>
+                <div>
+                  <p className="text-emerald-200 text-xs">Total Kelas Terdaftar</p>
+                  <p className="text-2xl font-black">{daftarKelas?.length || 0} <span className="text-xs font-normal">Kelas</span></p>
+                </div>
+              </div>
+            </div>
+
+            {/* Pintu Pintasan Cloud */}
+            <div className="bg-white p-4 rounded-2xl border flex items-center justify-between gap-3 shadow-sm">
+              <div>
+                <h4 className="font-bold text-sm text-slate-800">Sinkronisasi Cloud</h4>
+                <p className="text-[11px] text-slate-400">Amankan data lokal ke database online Supabase</p>
+              </div>
+              <button onClick={sinkronData} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm">
+                <RefreshCw size={12} /> Cloud Sync
+              </button>
+            </div>
+
+            {/* Ekspor Laporan Komplit */}
+            <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-xs uppercase tracking-wider text-slate-400"><Download size={16} className="text-blue-500"/> Ekspor Laporan Madrasah</h3>
+              <p className="text-xs text-slate-500">Unduh data riwayat kehadiran santri beserta catatan materi ajar harian langsung ke file Excel (.CSV).</p>
+              <button onClick={eksporKeExcel} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-sm shadow-md shadow-blue-600/10">
+                <Download size={18}/> Ekspor ke Microsoft Excel
+              </button>
+            </div>
+            <p className="text-center text-[11px] text-slate-400 pt-8">Bantuan IT &amp; Desain No Cantik: 0853 1123 9333</p>
+          </div>
+        )}
+
+        {/* ================= TAB 2: DATA SANTRI & KELAS ================= */}
+        {tab === 'murid' && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Navigasi Kecil */}
+            <div className="bg-slate-200/70 p-1 rounded-xl grid grid-cols-2 text-center text-xs font-bold">
+              <button onClick={() => setSubTabMurid('santri')} className={`py-2 rounded-lg transition-all ${subTabMurid === 'santri' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Kelola Data Murid</button>
+              <button onClick={() => setSubTabMurid('kelas')} className={`py-2 rounded-lg transition-all ${subTabMurid === 'kelas' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'}`}>Kelola Data Kelas</button>
+            </div>
+
+            {/* SUB-TAB: KELOLA DATA KELAS */}
+            {subTabMurid === 'kelas' && (
+              <>
+                <form onSubmit={tambahKelas} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
+                  <h3 className="font-bold text-slate-800 text-sm">Buat Kelas Baru</h3>
+                  <div className="flex gap-2">
+                    <input name="namaKelas" placeholder="Misal: Kelas 4 Daltim banin" className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs focus:bg-white focus:border-emerald-500 transition-all" required />
+                    <button type="submit" className="bg-slate-800 hover:bg-slate-900 text-white px-4 rounded-xl font-bold text-xs flex items-center gap-1 transition-colors"><Layers size={14}/> Simpan</button>
+                  </div>
+                </form>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-slate-400 uppercase px-1 tracking-wider">Daftar Kelas Tersimpan</p>
+                  {daftarKelas?.map(k => (
+                    <div key={k.id} className="p-3.5 bg-white rounded-xl border flex justify-between items-center shadow-sm">
+                      <span className="font-bold text-slate-700 text-sm flex items-center gap-2"><Layers size={14} className="text-slate-400" /> {k.nama}</span>
+                      <button onClick={() => hapusKelas(k.id, k.nama)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-colors"><Trash2 size={16}/></button>
+                    </div>
+                  ))}
+                  {daftarKelas?.length === 0 && <p className="text-center text-xs text-slate-400 py-6 border-2 border-dashed rounded-xl">Belum ada kelas yang dibuat.</p>}
+                </div>
+              </>
+            )}
+
+            {/* SUB-TAB: KELOLA DATA MURID */}
+            {subTabMurid === 'santri' && (
+              <>
+                <form onSubmit={tambahMurid} className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
+                  <h3 className="font-bold text-slate-800 text-sm">Registrasi Pendaftaran Murid</h3>
+                  <input name="nama" placeholder="Nama Lengkap Santri" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:bg-white transition-all text-xs" required />
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Tempatkan di Kelas</label>
+                    <select value={kelasTerpilihForm} onChange={(e) => setKelasTerpilihForm(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs font-bold text-slate-700">
+                      {daftarKelas?.map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+                      {daftarKelas?.length === 0 && <option value="">-- Buat Kelas Terlebih Dahulu --</option>}
+                    </select>
+                  </div>
+
+                  <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-xs shadow-md shadow-emerald-600/10">
+                    <UserPlus size={16}/> Daftarkan Santri Baru
+                  </button>
+                </form>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-slate-400 uppercase px-1 tracking-wider">Database Seluruh Santri ({murid?.length || 0})</p>
+                  {murid?.map(m => (
+                    <div key={m.id} className="p-3.5 bg-white rounded-xl border flex justify-between items-center shadow-sm">
+                      <div>
+                        <p className="font-bold text-slate-800 text-sm">{m.nama}</p>
+                        <p className="text-[9px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 inline-block px-1.5 py-0.5 rounded-md mt-1">{m.kelas}</p>
+                      </div>
+                      <button onClick={() => hapusMurid(m.id, m.nama)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ================= TAB 3: ABSENSI & JURNAL MATERI ================= */}
+        {tab === 'absen' && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Kontrol Saringan & Tanggal */}
+            <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-3 sticky top-[73px] z-20">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2 bg-slate-50 border p-2.5 rounded-xl">
+                  <Calendar size={14} className="text-slate-400" />
+                  <input type="date" value={tanggalAbsen} onChange={(e) => setTanggalAbsen(e.target.value)} className="w-full font-bold text-slate-700 text-xs bg-transparent outline-none" />
+                </div>
+                <div className="flex items-center gap-1 bg-slate-50 border p-2.5 rounded-xl">
+                  <Filter size={14} className="text-slate-400" />
+                  <select value={filterKelas} onChange={(e) => setFilterKelas(e.target.value)} className="w-full text-xs font-bold text-slate-700 bg-transparent outline-none">
+                    <option value="Semua">Semua Kelas</option>
+                    {daftarKelas?.map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="text" placeholder="Cari nama santri..." value={pencarian} onChange={(e) => setPencarian(e.target.value)} className="w-full p-2.5 pl-9 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs focus:bg-white focus:border-emerald-500 transition-all" />
+              </div>
+
+              {/* Grafik Statistik Kecil Kehadiran */}
+              <div className="grid grid-cols-4 gap-1 pt-1.5 text-[11px] font-bold text-center border-t border-slate-100">
+                <div className="text-emerald-600 bg-emerald-50 py-1 rounded-md">Hadir: {totalHadir}</div>
+                <div className="text-blue-600 bg-blue-50 py-1 rounded-md">Izin: {totalIzin}</div>
+                <div className="text-amber-600 bg-amber-50 py-1 rounded-md">Sakit: {totalSakit}</div>
+                <div className="text-rose-600 bg-rose-50 py-1 rounded-md">Alfa: {totalAlfa}</div>
+              </div>
+            </div>
+
+            {/* INPUT JURNAL MATERI AJAR */}
+            {filterKelas !== 'Semua' && (
+              <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
+                <label className="text-xs font-bold text-slate-500 flex items-center gap-1"><FileText size={14} className="text-emerald-600"/> Jurnal Materi ({filterKelas})</label>
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Tulis Kitab, Bab, atau Halaman hari ini..." value={materiInput} onChange={(e) => setMateriInput(e.target.value)} className="flex-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-xs focus:bg-white focus:border-emerald-500 transition-all" />
+                  <button onClick={simpanJurnalMateri} className={`px-4 rounded-xl font-bold text-xs flex items-center gap-1 text-white transition-all ${statusSimpanJurnal ? 'bg-emerald-500' : 'bg-slate-800 hover:bg-slate-900'}`}>
+                    {statusSimpanJurnal ? <Check size={14}/> : 'Simpan'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* DAFTAR BARIS ABSENSI MODERN */}
+            <div className="space-y-2">
+              {muridDifilter.map(m => {
+                const statusMurid = semuaAbsensi?.find(a => a.murid_id === m.id)?.status;
+                const warnaTombol = {
+                  'H': { aktif: 'bg-emerald-600 text-white ring-emerald-200', pasif: 'bg-slate-100 text-slate-600' },
+                  'I': { aktif: 'bg-blue-600 text-white ring-blue-200', pasif: 'bg-slate-100 text-slate-600' },
+                  'S': { aktif: 'bg-amber-500 text-white ring-amber-200', pasif: 'bg-slate-100 text-slate-600' },
+                  'A': { aktif: 'bg-rose-600 text-white ring-rose-200', pasif: 'bg-slate-100 text-slate-600' },
+                };
+
+                return (
+                  <div key={m.id} className="p-4 bg-white rounded-xl border border-slate-200/70 shadow-sm flex flex-col gap-3">
+                    <div className="flex justify-between items-start gap-4">
+                      <span className="font-bold text-slate-800 text-sm">{m.nama}</span>
+                      <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded truncate max-w-[130px] shadow-sm">{m.kelas}</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {['H','I','S','A'].map(s => {
+                        const isSelected = statusMurid === s;
+                        const kelasWarna = isSelected ? warnaTombol[s].aktif + ' ring-4 shadow-sm font-black' : warnaTombol[s].pasif;
+                        return (
+                          <button key={s} onClick={() => catatAbsen(m.id, s)} className={`py-2.5 rounded-xl text-xs font-bold transition-all duration-150 ${kelasWarna}`}>
+                            {s === 'H' ? 'Hadir' : s === 'I' ? 'Izin' : s === 'S' ? 'Sakit' : 'Alfa'}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {muridDifilter.length === 0 && <div className="text-center p-12 text-slate-400 text-xs border-2 border-dashed rounded-2xl">Tidak ada santri yang sesuai filter.</div>}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* NAVIGASI NAV-BAR BAWAH */}
+      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200/80 flex justify-around p-2 z-30 pb-safe shadow-[0_-8px_24px_rgba(0,0,0,0.04)]">
+        {[
+          { id: 'dashboard', icon: Home, label: 'Beranda' },
+          { id: 'murid', icon: UserPlus, label: 'Santri/Kelas' },
+          { id: 'absen', icon: CheckSquare, label: 'Absensi' },
+        ].map((item) => (
+          <button key={item.id} onClick={() => setTab(item.id)} 
+                  className={`flex flex-col items-center gap-1 p-2 w-20 rounded-xl transition-all duration-200 ${tab === item.id ? 'text-emerald-600 bg-emerald-50/80 font-black' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <item.icon size={20} className={tab === item.id ? 'stroke-[2.5px]' : 'stroke-2'}/>
+            <span className="text-[10px] tracking-wide font-bold">{item.label}</span>
           </button>
         ))}
       </nav>
