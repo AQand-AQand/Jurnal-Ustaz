@@ -1,142 +1,247 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
-import { supabase } from './supabase';
-import { Lock, UserPlus, BookOpen, FileText, CheckSquare, Home, RefreshCw } from 'lucide-react';
+import { Lock, UserPlus, BookOpen, FileText, CheckSquare, Home, Search, Calendar, Trash2 } from 'lucide-react';
 
-// --- KOMPONEN KEAMANAN (PIN) ---
-function AuthScreen({ onUnlock }) {
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState(false);
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (pin === '1234') { onUnlock(); } else { setError(true); setPin(''); }
-  };
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-6">
-      <div className="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm text-center border border-slate-700">
-        <div className="bg-emerald-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
-          <Lock size={32} className="text-white" />
-        </div>
-        <h1 className="text-2xl font-bold mb-2">Buku Ustaz Pro</h1>
-        <form onSubmit={handleLogin}>
-          <input type="password" maxLength="4" placeholder="PIN" className="w-full text-center text-3xl tracking-[1em] p-3 rounded-xl bg-slate-900 border border-slate-600 mb-4 outline-none" value={pin} onChange={(e) => { setPin(e.target.value); setError(false); }} autoFocus />
-          {error && <p className="text-red-400 text-sm mb-4">PIN Salah!</p>}
-          <button type="submit" className="w-full bg-emerald-500 py-3 rounded-xl font-bold">Buka Kunci</button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// --- KOMPONEN HALAMAN MURID ---
-function HalamanMurid() {
-  const [nama, setNama] = useState('');
-  const [kelas, setKelas] = useState('');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const murid = useLiveQuery(() => db.murid.toArray(), []);
-
-  const simpanMurid = async (e) => {
-    e.preventDefault();
-    if (!nama || !kelas) return;
-    await db.murid.add({ nama, kelas });
-    setNama(''); setKelas('');
-  };
-
-  const sinkronData = async () => {
-    setIsSyncing(true);
-    try {
-      const dataLokal = await db.murid.toArray();
-      if (dataLokal.length > 0) await supabase.from('murid').upsert(dataLokal);
-      const { data } = await supabase.from('murid').select('*');
-      if (data) await db.murid.bulkPut(data);
-      alert('Sinkron Berhasil!');
-    } catch (e) { alert('Gagal: ' + e.message); }
-    setIsSyncing(false);
-  };
-
-  return (
-    <div className="pb-24 pt-6 px-4">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold text-slate-800">Data Murid</h2>
-        <button onClick={sinkronData} className="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2">
-          <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} /> Sinkron
-        </button>
-      </div>
-      <form onSubmit={simpanMurid} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 flex flex-col gap-3">
-        <input type="text" placeholder="Nama Murid" className="p-3 bg-slate-50 border rounded-lg" value={nama} onChange={e => setNama(e.target.value)} />
-        <input type="text" placeholder="Kelas" className="p-3 bg-slate-50 border rounded-lg" value={kelas} onChange={e => setKelas(e.target.value)} />
-        <button type="submit" className="bg-emerald-600 text-white font-bold p-3 rounded-lg">Tambah Murid</button>
-      </form>
-      <div className="grid gap-3">
-        {murid?.map(m => (
-          <div key={m.id} className="bg-white p-4 rounded-xl border flex justify-between items-center">
-            <span className="font-bold text-slate-800">{m.nama}</span>
-            <span className="text-xs bg-slate-100 px-2 py-1 rounded">{m.kelas}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// --- KOMPONEN UTAMA ---
 export default function App() {
   const [isLocked, setIsLocked] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [tab, setTab] = useState('dashboard');
+  
+  // State untuk Fitur Modern
+  const [tanggalAbsen, setTanggalAbsen] = useState(new Date().toISOString().split('T')[0]);
+  const [pencarian, setPencarian] = useState('');
+
+  // Pengambilan Data Real-Time
   const murid = useLiveQuery(() => db.murid.toArray(), []);
+  const semuaAbsensi = useLiveQuery(() => db.absensi.where('tanggal').equals(tanggalAbsen).toArray(), [tanggalAbsen]);
 
-  if (isLocked) return <AuthScreen onUnlock={() => setIsLocked(false)} />;
-
-  const renderContent = () => {
-    switch(activeTab) {
-      case 'dashboard': return (
-        <div className="p-6">
-          <div className="bg-emerald-600 rounded-2xl p-6 text-white mb-6">
-            <h2 className="text-2xl font-bold">Selamat Datang</h2>
-            <p className="text-emerald-100 text-sm">Sistem Buku Ustaz Pro</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white p-4 rounded-xl shadow border">
-              <p className="text-xs font-semibold text-slate-500">Total Murid</p>
-              <p className="text-3xl font-bold">{murid?.length || 0}</p>
-            </div>
-          </div>
-        </div>
-      );
-      case 'murid': return <HalamanMurid />;
-      case 'absen': return (
-        <div className="pb-24 pt-6 px-4">
-          <h2 className="text-xl font-bold text-slate-800 mb-4">Absensi Hari Ini</h2>
-          <div className="bg-white rounded-xl shadow-sm border divide-y">
-            {murid?.map(m => (
-              <div key={m.id} className="p-4 flex justify-between items-center">
-                <span className="font-medium text-slate-700">{m.nama}</span>
-                <div className="flex gap-1">
-                  {['H', 'I', 'S', 'A'].map(s => (
-                    <button key={s} onClick={() => alert(`${m.nama} ditandai ${s}`)} className="w-8 h-8 bg-slate-100 rounded hover:bg-emerald-500 hover:text-white text-xs font-bold">{s}</button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-      default: return <div className="p-6 text-center text-slate-400">Modul Belum Tersedia</div>;
+  // --- FUNGSI LOGIKA MODERN ---
+  const tambahMurid = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const nama = formData.get('nama');
+    const kelas = formData.get('kelas');
+    if (nama && kelas) {
+      await db.murid.add({ nama, kelas });
+      e.target.reset();
     }
   };
 
+  const hapusMurid = async (id) => {
+    if (window.confirm('Yakin ingin menghapus murid ini?')) {
+      await db.murid.delete(id);
+      // Opsional: Hapus juga riwayat absensinya
+      const absensiTerkait = await db.absensi.where('murid_id').equals(id).toArray();
+      const idAbsensi = absensiTerkait.map(a => a.id);
+      await db.absensi.bulkDelete(idAbsensi);
+    }
+  };
+
+  const catatAbsen = async (muridId, status) => {
+    const dataAda = await db.absensi.where({ murid_id: muridId, tanggal: tanggalAbsen }).first();
+    if (dataAda) {
+      await db.absensi.update(dataAda.id, { status });
+    } else {
+      await db.absensi.add({ murid_id: muridId, status, tanggal: tanggalAbsen });
+    }
+  };
+
+  // --- FILTER & STATISTIK ---
+  const muridDifilter = murid?.filter(m => m.nama.toLowerCase().includes(pencarian.toLowerCase())) || [];
+  
+  const totalHadir = semuaAbsensi?.filter(a => a.status === 'H').length || 0;
+  const totalIzin = semuaAbsensi?.filter(a => a.status === 'I').length || 0;
+  const totalSakit = semuaAbsensi?.filter(a => a.status === 'S').length || 0;
+  const totalAlfa = semuaAbsensi?.filter(a => a.status === 'A').length || 0;
+
+  // --- TAMPILAN KUNCI ---
+  if (isLocked) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 p-6 text-white">
+      <div className="bg-emerald-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/30">
+        <Lock size={32} className="text-white" />
+      </div>
+      <h1 className="text-3xl font-bold mb-2">Buku Ustaz</h1>
+      <p className="text-slate-400 mb-8 font-medium">Cabang Jember Timur</p>
+      
+      <input type="password" placeholder="PIN (1234)" maxLength="4" 
+             className="text-black p-4 w-full max-w-sm rounded-xl text-center mb-4 text-3xl tracking-[1em] outline-none focus:ring-4 focus:ring-emerald-500/50 transition-all" 
+             onChange={(e) => { if(e.target.value === '1234') setIsLocked(false); }} autoFocus />
+    </div>
+  );
+
+  // --- TAMPILAN UTAMA ---
   return (
-    <div className="max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl">
-      <header className="bg-white px-6 py-4 flex justify-between items-center shadow-sm sticky top-0 z-10">
-        <h1 className="font-bold text-slate-800">Buku Ustaz</h1>
-        <button onClick={() => setIsLocked(true)}><Lock size={16} /></button>
+    <div className="max-w-md mx-auto min-h-screen bg-slate-50 pb-24 shadow-2xl relative overflow-hidden">
+      <header className="bg-white px-6 py-4 font-bold border-b text-slate-800 flex items-center gap-3 sticky top-0 z-10 shadow-sm">
+        <div className="bg-emerald-100 p-2 rounded-lg">
+          <BookOpen size={20} className="text-emerald-600"/>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-lg leading-tight">Buku Ustaz Pro</span>
+        </div>
       </header>
-      <main>{renderContent()}</main>
-      <nav className="bg-white border-t fixed bottom-0 w-full max-w-md flex justify-around px-2 py-3 pb-safe z-20">
-        {[ {id:'dashboard', icon:Home}, {id:'murid', icon:UserPlus}, {id:'absen', icon:CheckSquare}, {id:'soal', icon:FileText} ].map(item => (
-          <button key={item.id} onClick={() => setActiveTab(item.id)} className={activeTab === item.id ? 'text-emerald-600' : 'text-slate-400'}>
-            <item.icon size={24} />
+      
+      <main className="p-4 space-y-4">
+        {/* --- MODUL DASHBOARD --- */}
+        {tab === 'dashboard' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="p-6 bg-gradient-to-br from-emerald-500 to-emerald-700 text-white rounded-2xl shadow-lg relative overflow-hidden">
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+              <p className="text-emerald-100 text-sm font-medium mb-1">WILAYAH JEMBER</p>
+              <h2 className="text-2xl font-bold mb-4">Cabang Jember Timur</h2>
+              
+              <div className="flex items-center gap-4 mt-6 border-t border-emerald-400/30 pt-4">
+                <div>
+                  <p className="text-emerald-100 text-xs font-medium">Total Murid</p>
+                  <p className="text-3xl font-bold">{murid?.length || 0}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border shadow-sm">
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <Calendar size={18} className="text-emerald-600"/> Rekap Hari Ini
+              </h3>
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100">
+                  <p className="text-xs text-emerald-600 font-bold mb-1">Hadir</p>
+                  <p className="text-xl font-bold text-emerald-700">{totalHadir}</p>
+                </div>
+                <div className="bg-blue-50 p-2 rounded-xl border border-blue-100">
+                  <p className="text-xs text-blue-600 font-bold mb-1">Izin</p>
+                  <p className="text-xl font-bold text-blue-700">{totalIzin}</p>
+                </div>
+                <div className="bg-amber-50 p-2 rounded-xl border border-amber-100">
+                  <p className="text-xs text-amber-600 font-bold mb-1">Sakit</p>
+                  <p className="text-xl font-bold text-amber-700">{totalSakit}</p>
+                </div>
+                <div className="bg-rose-50 p-2 rounded-xl border border-rose-100">
+                  <p className="text-xs text-rose-600 font-bold mb-1">Alfa</p>
+                  <p className="text-xl font-bold text-rose-700">{totalAlfa}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center mt-8">
+               <p className="text-xs text-slate-400">Bantuan IT: 0853 1123 9333</p>
+            </div>
+          </div>
+        )}
+
+        {/* --- MODUL MURID --- */}
+        {tab === 'murid' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <form onSubmit={tambahMurid} className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
+              <h3 className="font-bold text-slate-800 mb-2">Tambah Data Murid</h3>
+              <input name="nama" placeholder="Nama Lengkap" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:bg-white transition-all" required />
+              <input name="kelas" placeholder="Kelas / Kelompok" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:bg-white transition-all" required />
+              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white p-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2">
+                <UserPlus size={18}/> Simpan Murid
+              </button>
+            </form>
+
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-slate-400 px-2 uppercase tracking-wider">Daftar Murid ({murid?.length || 0})</p>
+              {murid?.map(m => (
+                <div key={m.id} className="p-4 bg-white rounded-xl border shadow-sm flex justify-between items-center group">
+                  <div>
+                    <p className="font-bold text-slate-800">{m.nama}</p>
+                    <p className="text-xs text-emerald-600 font-medium bg-emerald-50 inline-block px-2 py-0.5 rounded mt-1">{m.kelas}</p>
+                  </div>
+                  <button onClick={() => hapusMurid(m.id)} className="text-slate-300 hover:text-rose-500 transition-colors p-2">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))}
+              {murid?.length === 0 && <div className="text-center p-8 text-slate-400 border-2 border-dashed rounded-xl">Belum ada data murid</div>}
+            </div>
+          </div>
+        )}
+
+        {/* --- MODUL ABSEN MODERN --- */}
+        {tab === 'absen' && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            
+            {/* Header Absen: Pilih Tanggal & Pencarian */}
+            <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-3 sticky top-[72px] z-10">
+              <div className="flex items-center gap-3">
+                <div className="bg-slate-100 p-2.5 rounded-xl text-slate-500">
+                  <Calendar size={20} />
+                </div>
+                <input 
+                  type="date" 
+                  value={tanggalAbsen} 
+                  onChange={(e) => setTanggalAbsen(e.target.value)}
+                  className="flex-1 p-2 border-b-2 border-slate-100 focus:border-emerald-500 outline-none font-bold text-slate-700 bg-transparent"
+                />
+              </div>
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Cari nama murid..." 
+                  value={pencarian}
+                  onChange={(e) => setPencarian(e.target.value)}
+                  className="w-full p-2.5 pl-10 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:bg-white text-sm"
+                />
+              </div>
+            </div>
+
+            {/* List Absensi */}
+            <div className="space-y-2">
+              {muridDifilter.map(m => {
+                const statusMurid = semuaAbsensi?.find(a => a.murid_id === m.id)?.status;
+                
+                // Konfigurasi warna modern untuk tombol
+                const warnaTombol = {
+                  'H': { aktif: 'bg-emerald-500 text-white ring-emerald-200', pasif: 'bg-slate-100 text-slate-600 hover:bg-emerald-50' },
+                  'I': { aktif: 'bg-blue-500 text-white ring-blue-200', pasif: 'bg-slate-100 text-slate-600 hover:bg-blue-50' },
+                  'S': { aktif: 'bg-amber-500 text-white ring-amber-200', pasif: 'bg-slate-100 text-slate-600 hover:bg-amber-50' },
+                  'A': { aktif: 'bg-rose-500 text-white ring-rose-200', pasif: 'bg-slate-100 text-slate-600 hover:bg-rose-50' },
+                };
+
+                return (
+                  <div key={m.id} className="p-4 bg-white rounded-xl border shadow-sm flex flex-col gap-3">
+                    <span className="font-bold text-slate-800">{m.nama}</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {['H','I','S','A'].map(s => {
+                        const isSelected = statusMurid === s;
+                        const kelasWarna = isSelected ? warnaTombol[s].aktif + ' ring-4 shadow-md' : warnaTombol[s].pasif;
+                        
+                        return (
+                          <button 
+                            key={s} 
+                            onClick={() => catatAbsen(m.id, s)} 
+                            className={`py-2 rounded-lg text-sm font-bold transition-all duration-200 ${kelasWarna}`}
+                          >
+                            {s === 'H' ? 'Hadir' : s === 'I' ? 'Izin' : s === 'S' ? 'Sakit' : 'Alfa'}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {muridDifilter.length === 0 && <p className="text-center text-slate-400 mt-8 text-sm">Tidak ada nama yang cocok.</p>}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* --- NAVIGASI BAWAH --- */}
+      <nav className="fixed bottom-0 w-full max-w-md bg-white border-t border-slate-200 flex justify-around p-2 z-20 pb-safe shadow-[0_-10px_20px_rgba(0,0,0,0.03)]">
+        {[
+          { id: 'dashboard', icon: Home, label: 'Beranda' },
+          { id: 'murid', icon: UserPlus, label: 'Murid' },
+          { id: 'absen', icon: CheckSquare, label: 'Absensi' },
+        ].map((item) => (
+          <button 
+            key={item.id} 
+            onClick={() => setTab(item.id)} 
+            className={`flex flex-col items-center gap-1 p-2 w-20 rounded-xl transition-all duration-200 ${tab === item.id ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:bg-slate-50'}`}
+          >
+            <item.icon size={22} className={tab === item.id ? 'stroke-[2.5px]' : 'stroke-2'}/>
+            <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
           </button>
         ))}
       </nav>
