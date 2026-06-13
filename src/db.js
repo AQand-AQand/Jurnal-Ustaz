@@ -1,12 +1,11 @@
 import Dexie from 'dexie';
 
-export const db = new Dexie('DatabaseBukuUstaz');
+export const db = new Dexie('BukuUstazDB');
 
-// Skema tabel database diperbarui ke versi 2
-db.version(2).stores({
+// Naik ke versi 5 untuk menambahkan tabel jurnal materi mengajar
+db.version(5).stores({
+  kelas: '++id, nama',
   murid: '++id, nama, kelas',
-  absensi: '++id, murid_id, tanggal, status, is_synced',
-  jurnal: '++id, kategori, mapel, isi, tanggal, is_synced', // kategori: batas, perilaku, pr, dll
-  soal: '++id, judul, isi, tipe, tanggal',
-  nilai: '++id, murid_id, ulangan, tulis, lisan, is_synced'
+  absensi: '++id, murid_id, status, tanggal',
+  jurnal: '++id, kelas, tanggal, materi' 
 });
