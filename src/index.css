@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mencegah highlight biru saat tombol ditekan di HP */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: #f8fafc;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Memastikan navigasi bawah tidak tertutup oleh area aman layar HP modern */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
