@@ -121,8 +121,8 @@ export default function App() {
     }));
   };
 
-  // Simpan Rekap Absensi
-  const simpanAbsensi KeDatabase = () => {
+  // Simpan Rekap Absensi (TYPO SUDAH DIPERBAIKI DI SINI)
+  const simpanAbsensiKeDatabase = () => {
     alert('Rekap absensi hari ini berhasil disimpan ke sistem!');
   };
 
