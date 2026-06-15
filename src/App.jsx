@@ -14,8 +14,8 @@ export default function App() {
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // STATE FILTER KELAS DI KOLOM ABSEN
-  const [pilihKelasAbsen, setPilihKelasAbsen] = useState('Semua Kelas');
+  // STATE BARU: Menyimpan kelas mana yang sedang diklik/dipilih oleh Ustaz
+  const [kelasTerpilih, setKelasTerpilih] = useState(null);
 
   // State Data Aplikasi
   const [muridList, setMuridList] = useState([]);
@@ -31,12 +31,12 @@ export default function App() {
 
   // 2. Lifecycle & Sinkronisasi Data
   useEffect(() => {
-    // Load cadangan data dari LocalStorage terlebih dahulu agar cepat
+    // Ambil data lokal terlebih dahulu sebagai cadangan awal
     const savedMurid = localStorage.getItem('buku_ustaz_murid');
     if (savedMurid) {
       setMuridList(JSON.parse(savedMurid));
     } else {
-      // Default dummy data jika database lokal masih kosong
+      // Default dummy data bawaan jika database lokal kosong
       setMuridList([
         { id: 1, nama: 'Muhammad Ali', kelas: 'Kelas 1 A' },
         { id: 2, nama: 'Aisyah Az-Zahra', kelas: 'Kelas 1 A' },
@@ -183,13 +183,8 @@ export default function App() {
     }
   };
 
-  // OTOMATIS MENGAMBIL DAFTAR KELAS SECARA UNIK DARI DATABASE
-  const listPilihanKelas = ['Semua Kelas', ...new Set(muridList.map(m => m.kelas))];
-
-  // MENYARING DATA MURID BERDASARKAN KELAS YANG DIPILIH
-  const muridTersaring = pilihKelasAbsen === 'Semua Kelas'
-    ? muridList
-    : muridList.filter(m => m.kelas === pilihKelasAbsen);
+  // MENGAMBIL DAFTAR KELAS SECARA UNIK DARI DATABASE MURID
+  const listKelasUnik = [...new Set(muridList.map(m => m.kelas))];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans max-w-md mx-auto shadow-xl border-x border-slate-200">
@@ -228,92 +223,114 @@ export default function App() {
         
         {loading && <div className="text-center text-xs text-emerald-600 font-bold mb-2 animate-bounce">Sinkronisasi Database Cloud...</div>}
 
-        {/* BANNER JIKA BELUM LOGIN */}
-        {!user && (
-          <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-col gap-2 items-center text-center">
-            <p className="text-sm text-emerald-800 font-medium">Hubungkan ke Google Auth Supabase untuk mengaktifkan backup otomatis.</p>
-            <button onClick={handleLoginGoogle} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs py-2 px-4 rounded-lg shadow">
-              Masuk Google
-            </button>
-          </div>
-        )}
-
         {/* MODUL TAB 1: ABSEN */}
         {activeTab === 'absen' && (
           <div className="space-y-4">
             
-            {/* PANEL FILTER KELAS (DIPILIH SESUAI DATA BASE) */}
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 space-y-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="font-bold text-slate-800 text-base">Pilih Kelas Presensi</h2>
-                  <p className="text-xs text-slate-400">Hari ini: {absensi.tanggal}</p>
+            {/* KONDISI A: JIKA BELUM ADA KELAS YANG DIKLIK (TAMPILKAN DAFTAR KELAS) */}
+            {kelasTerpilih === null ? (
+              <div className="space-y-3">
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+                  <h2 className="font-bold text-slate-800 text-base">Silakan Pilih Kelas</h2>
+                  <p className="text-xs text-slate-400">Tanggal Absensi: {absensi.tanggal}</p>
                 </div>
-                <span className="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-bold">
-                  {Object.keys(absensi.data).length} Diisi
-                </span>
-              </div>
-              
-              {/* Dropdown Pilihan Kelas Realtime */}
-              <select
-                value={pilihKelasAbsen}
-                onChange={(e) => setPilihKelasAbsen(e.target.value)}
-                className="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-slate-50 font-semibold text-slate-700 focus:outline-emerald-500"
-              >
-                {listPilihanKelas.map((kelas, idx) => (
-                  <option key={idx} value={kelas}>{kelas}</option>
-                ))}
-              </select>
-            </div>
 
-            {/* DAFTAR SANTRI YANG DI-FILTER */}
-            <div className="space-y-2">
-              {muridTersaring.length === 0 ? (
-                <p className="text-center text-sm text-slate-400 py-6">Tidak ada santri di database untuk kelas ini.</p>
-              ) : (
-                muridTersaring.map((murid) => {
-                  const currentStatus = absensi.data[murid.id] || '';
-                  return (
-                    <div key={murid.id} className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 flex flex-col gap-2">
-                      <div className="flex justify-between items-center">
+                <div className="grid grid-cols-1 gap-2">
+                  {listKelasUnik.map((kelas, idx) => {
+                    const jumlahSantri = muridList.filter(m => m.kelas === kelas).length;
+                    const sudahAbsen = muridList.filter(m => m.kelas === kelas && absensi.data[m.id]).length;
+
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setKelasTerpilih(kelas)}
+                        className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center hover:border-emerald-500 text-left transition-all group"
+                      >
                         <div>
-                          <h3 className="font-semibold text-slate-800 text-sm">{murid.nama}</h3>
-                          <span className="inline-block bg-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded font-medium mt-0.5">
-                            {murid.kelas} {/* Menyebutkan kelas sesuai database */}
-                          </span>
+                          <h3 className="font-bold text-slate-800 group-hover:text-emerald-600 transition-colors">{kelas}</h3>
+                          <p className="text-xs text-slate-400 mt-0.5">{jumlahSantri} Santri Terdaftar</p>
                         </div>
-                      </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${sudahAbsen === jumlahSantri ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                            {sudahAbsen} / {jumlahSantri} Diisi
+                          </span>
+                          <svg className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              
+              /* KONDISI B: JIKA KELAS SUDAH DIKLIK (TAMPILKAN DAFTAR MURID DI KELAS TERSEBUT) */
+              <div className="space-y-4">
+                {/* Header Sub-Menu Kelas dengan Tombol Back */}
+                <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-100 flex items-center gap-3">
+                  <button 
+                    onClick={() => setKelasTerpilih(null)}
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition"
+                    title="Kembali ke Daftar Kelas"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                  </button>
+                  <div>
+                    <h2 className="font-bold text-slate-800 text-base">Presensi {kelasTerpilih}</h2>
+                    <p className="text-xs text-slate-400">Menejemen Absen Hari Ini</p>
+                  </div>
+                </div>
 
-                      {/* Opsi Kehadiran */}
-                      <div className="grid grid-cols-4 gap-1.5 mt-1">
-                        {['Hadir', 'Izin', 'Sakit', 'Alpa'].map((status) => {
-                          const isSelected = currentStatus === status;
-                          const colors = {
-                            Hadir: isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600',
-                            Izin: isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600',
-                            Sakit: isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600',
-                            Alpa: isSelected ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
-                          };
-                          return (
-                            <button
-                              key={status}
-                              onClick={() => handleStatusAbsen(murid.id, status)}
-                              className={`text-xs py-1.5 font-bold rounded-lg transition-all ${colors[status]}`}
-                            >
-                              {status}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                {/* List Murid yang Sesuai Kelas Terpilih */}
+                <div className="space-y-2">
+                  {muridList
+                    .filter(m => m.kelas === kelasTerpilih)
+                    .map((murid) => {
+                      const currentStatus = absensi.data[murid.id] || '';
+                      return (
+                        <div key={murid.id} className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 flex flex-col gap-2">
+                          <h3 className="font-semibold text-slate-800 text-sm">{murid.nama}</h3>
 
-            <button onClick={simpanAbsensiKeDatabase} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md transition mt-4">
-              Simpan Rekap Absensi
-            </button>
+                          {/* Tombol Opsi Status Kehadiran */}
+                          <div className="grid grid-cols-4 gap-1.5 mt-1">
+                            {['Hadir', 'Izin', 'Sakit', 'Alpa'].map((status) => {
+                              const isSelected = currentStatus === status;
+                              const colors = {
+                                Hadir: isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600',
+                                Izin: isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600',
+                                Sakit: isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600',
+                                Alpa: isSelected ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
+                              };
+                              return (
+                                <button
+                                  key={status}
+                                  onClick={() => handleStatusAbsen(murid.id, status)}
+                                  className={`text-xs py-1.5 font-bold rounded-lg transition-all ${colors[status]}`}
+                                >
+                                  {status}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+
+                {/* Aksi Simpan */}
+                <div className="flex gap-2 pt-2">
+                  <button onClick={() => setKelasTerpilih(null)} className="bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-sm transition">
+                    Kembali
+                  </button>
+                  <button onClick={simpanAbsensiKeDatabase} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md transition text-sm">
+                    Simpan Rekap Kelas
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -402,19 +419,19 @@ export default function App() {
 
       {/* NAVIGASI BAWAH */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 h-16 flex items-center justify-around z-50 shadow-lg">
-        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'home' ? 'text-emerald-600' : 'text-slate-400'}`}>
+        <button onClick={() => { setActiveTab('home'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'home' ? 'text-emerald-600' : 'text-slate-400'}`}>
           <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
           Home
         </button>
-        <button onClick={() => setActiveTab('murid')} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'murid' ? 'text-emerald-600' : 'text-slate-400'}`}>
+        <button onClick={() => { setActiveTab('murid'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'murid' ? 'text-emerald-600' : 'text-slate-400'}`}>
           <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
           Murid
         </button>
-        <button onClick={() => setActiveTab('absen')} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'absen' ? 'text-emerald-600' : 'text-slate-400'}`}>
+        <button onClick={() => { setActiveTab('absen'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'absen' ? 'text-emerald-600' : 'text-slate-400'}`}>
           <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
           Absen
         </button>
-        <button onClick={() => setActiveTab('soal')} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'soal' ? 'text-emerald-600' : 'text-slate-400'}`}>
+        <button onClick={() => { setActiveTab('soal'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'soal' ? 'text-emerald-600' : 'text-slate-400'}`}>
           <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           Soal
         </button>
