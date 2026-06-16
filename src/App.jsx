@@ -295,11 +295,3 @@ export default function App() {
     </div>
   );
 }
-
-### Keunggulan v3.0 Master:
-1.  **Profil yang Pintar:** Saat Mas Taufiq mengklik nama anak di menu **Profil**, aplikasi langsung menggabungkan (mencari) data Absen, Nilai, dan Catatan miliknya. Sangat profesional untuk laporan ke wali santri.
-2.  **Input Kelas Manual:** Mas Taufiq bisa mengetik kelas apa saja tanpa harus pilih-pilih dari daftar tetap.
-3.  **Bank Soal Berfolder:** Otomatis rapi per mata pelajaran.
-4.  **Data Terintegrasi:** Semua data punya kolom `ustadz_email`, jadi kalau Mas Taufiq ganti HP, cukup login Google, semua data akan kembali muncul otomatis dari Supabase.
-
-Silakan dicoba diunggah, Mas! Ini adalah puncak fitur yang paling lengkap. Jika ada detail UI yang mau diperhalus, kita eksekusi setelah ini. Sukses terus, Mas Taufiq!
