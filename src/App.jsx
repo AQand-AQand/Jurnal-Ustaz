@@ -1,439 +1,357 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// 1. Konfigurasi Supabase
+// Konfigurasi Koneksi Supabase Anda
 const SUPABASE_URL = "https://gjfdxqhwwytcgylokksq.supabase.co";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "MASUKKAN_ANON_KEY_SUPABASE_DISINI";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ""; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function App() {
-  // State Utama
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('absen'); // Default langsung ke modul Absen
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallBtn, setShowInstallBtn] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
   const [loading, setLoading] = useState(false);
 
-  // STATE BARU: Menyimpan kelas mana yang sedang diklik/dipilih oleh Ustaz
-  const [kelasTerpilih, setKelasTerpilih] = useState(null);
-
-  // State Data Aplikasi
+  // --- State Komponen Data Base ---
   const [muridList, setMuridList] = useState([]);
-  const [absensi, setAbsensi] = useState({
-    tanggal: new Date().toISOString().split('T')[0],
-    data: {}
-  });
+  const [formSantri, setFormSantri] = useState({ nama: '', kelas: 'Kelas 1 A', alamat: '', domisili: '' });
 
-  const [inputNama, setInputNama] = useState('');
-  const [inputKelas, setInputKelas] = useState('Kelas 1 A');
-  const [inputSoal, setInputSoal] = useState('');
-  const [soalList, setSoalList] = useState([]);
+  // --- State Komponen Modul Soal ---
+  const [modeSoal, setModeSoal] = useState('menu'); // Pilihan: 'menu', 'buat', 'bank'
+  const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: 'Kelas 1 A', batasan: '', isi: '' });
+  const [listBankSoal, setListBankSoal] = useState([]);
+  const [folderTerpilih, setFolderTerpilih] = useState(null);
 
-  // 2. Lifecycle & Sinkronisasi Data
+  // Efek Siklus Pertama Kali Aplikasi Dijalankan
   useEffect(() => {
-    // Ambil data lokal terlebih dahulu sebagai cadangan awal
-    const savedMurid = localStorage.getItem('buku_ustaz_murid');
-    if (savedMurid) {
-      setMuridList(JSON.parse(savedMurid));
-    } else {
-      // Default dummy data bawaan jika database lokal kosong
-      setMuridList([
-        { id: 1, nama: 'Muhammad Ali', kelas: 'Kelas 1 A' },
-        { id: 2, nama: 'Aisyah Az-Zahra', kelas: 'Kelas 1 A' },
-        { id: 3, nama: 'Ahmad Abdullah', kelas: 'Kelas 1 B' }
-      ]);
-    }
-
-    const savedAbsen = localStorage.getItem('buku_ustaz_absen');
-    if (savedAbsen) setAbsensi(JSON.parse(savedAbsen));
-
-    const savedSoal = localStorage.getItem('buku_ustaz_soal');
-    if (savedSoal) setSoalList(JSON.parse(savedSoal));
-
-    // Cek Sesi Auth Supabase
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    // Deteksi Fitur Instal PWA HP
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallBtn(true);
-    });
-
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    loadLocalData();
     return () => subscription.unsubscribe();
   }, []);
 
-  // Ambil data asli dari Tabel Supabase saat User sukses Login Google
-  useEffect(() => {
-    if (user) {
-      fetchDataDariSupabase();
-    }
+  // Otomatis Sinkronisasi Saat Ustadz Berhasil Terhubung Akun Google
+  useEffect(() => { 
+    if (user) syncSemuaData(); 
   }, [user]);
 
-  const fetchDataDariSupabase = async () => {
+  // Membaca Backup Data Lokal di HP (Fitur Offline)
+  const loadLocalData = () => {
+    const s = localStorage.getItem('local_santri');
+    const b = localStorage.getItem('local_bank_soal');
+    if (s) setMuridList(JSON.parse(s));
+    if (b) setListBankSoal(JSON.parse(b));
+  };
+
+  // Sinkronisasi Ganda Menarik Data Terbaru dari Cloud Supabase
+  const syncSemuaData = async () => {
     setLoading(true);
-    try {
-      // Ambil dari tabel 'murid'
-      const { data: dataMurid, error: errMurid } = await supabase
-        .from('murid')
-        .select('*')
-        .order('nama', { ascending: true });
-      
-      if (!errMurid && dataMurid) {
-        setMuridList(dataMurid);
-        localStorage.setItem('buku_ustaz_murid', JSON.stringify(dataMurid));
-      }
-
-      // Ambil dari tabel 'soal'
-      const { data: dataSoal, error: errSoal } = await supabase.from('soal').select('*');
-      if (!errSoal && dataSoal) {
-        setSoalList(dataSoal.map(s => s.teks || s.pertanyaan));
-      }
-    } catch (e) {
-      console.error("Gagal sync cloud:", e);
-    } finally {
-      setLoading(false);
-    }
+    const { data: s } = await supabase.from('santri').select('*').order('nama');
+    const { data: b } = await supabase.from('bank_soal').select('*').order('created_at', { ascending: false });
+    if (s) { setMuridList(s); localStorage.setItem('local_santri', JSON.stringify(s)); }
+    if (b) { setListBankSoal(b); localStorage.setItem('local_bank_soal', JSON.stringify(b)); }
+    setLoading(false);
   };
 
-  // Backup otomatis ke LocalStorage jika ada perubahan state
-  useEffect(() => {
-    if (muridList.length > 0) localStorage.setItem('buku_ustaz_murid', JSON.stringify(muridList));
-  }, [muridList]);
-
-  useEffect(() => {
-    localStorage.setItem('buku_ustaz_absen', JSON.stringify(absensi));
-  }, [absensi]);
-
-  useEffect(() => {
-    localStorage.setItem('buku_ustaz_soal', JSON.stringify(soalList));
-  }, [soalList]);
-
-  // 3. Fungsi Kendali Aplikasi
-  const handleLoginGoogle = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: window.location.origin }
-      });
-      if (error) throw error;
-    } catch (error) {
-      alert('Gagal login: ' + error.message);
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-  };
-
-  const handleInstallPWA = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') setShowInstallBtn(false);
-    setDeferredPrompt(null);
-  };
-
-  const handleTambahMurid = async (e) => {
+  // Aksi Tombol Simpan Profil Santri ke Data Base
+  const handleSimpanSantri = async (e) => {
     e.preventDefault();
-    if (!inputNama.trim()) return;
-
-    const baru = { id: Date.now(), nama: inputNama, kelas: inputKelas };
-    setMuridList([...muridList, baru]);
-
+    if (!formSantri.nama) return alert("Nama santri wajib diisi!");
+    
+    const baru = { ...formSantri, id: Date.now() };
+    const updateList = [...muridList, baru];
+    
+    // Simpan Offline Terlebih Dahulu
+    setMuridList(updateList);
+    localStorage.setItem('local_santri', JSON.stringify(updateList));
+    
+    // Dorong ke Online Cloud jika Akun Google Aktif
     if (user) {
-      await supabase.from('murid').insert([{ nama: inputNama, kelas: inputKelas }]);
+      await supabase.from('santri').insert([formSantri]);
     }
-    setInputNama('');
+    
+    setFormSantri({ nama: '', kelas: 'Kelas 1 A', alamat: '', domisili: '' });
+    alert("Data berhasil ditambahkan ke Data Base!");
   };
 
-  const handleStatusAbsen = (muridId, status) => {
-    setAbsensi(prev => ({
-      ...prev,
-      data: { ...prev.data, [muridId]: status }
-    }));
-  };
-
-  const simpanAbsensiKeDatabase = async () => {
+  // Aksi Tombol Simpan Soal (Menyimpan Ganda: Offline & Online)
+  const handleSimpanSoal = async () => {
+    if (!formSoal.pelajaran || !formSoal.isi) {
+      return alert("Mohon isi nama Fan Pelajaran dan Kolom Soal terlebih dahulu!");
+    }
+    
+    const baru = { ...formSoal, id: Date.now(), isi_soal: formSoal.isi };
+    const updateBank = [baru, ...listBankSoal];
+    
+    // 1. Simpan Instan ke Memori HP (Offline Aman)
+    setListBankSoal(updateBank);
+    localStorage.setItem('local_bank_soal', JSON.stringify(updateBank));
+    
+    // 2. Kirim ke Database Cloud Supabase
     if (user) {
-      setLoading(true);
-      try {
-        const payload = Object.keys(absensi.data).map(id => ({
-          murid_id: id,
-          tanggal: absensi.tanggal,
-          status: absensi.data[id]
-        }));
-        const { error } = await supabase.from('absensi').insert(payload);
-        if (error) throw error;
-        alert('Data rekap absen sukses terkirim ke Database Supabase!');
-      } catch (e) {
-        alert('Gagal upload cloud, tersimpan di lokal HP: ' + e.message);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      alert('Rekap absen berhasil disimpan di memori lokal HP!');
+      await supabase.from('bank_soal').insert([{
+        pelajaran: formSoal.pelajaran.trim(),
+        kelas: formSoal.kelas,
+        batasan: formSoal.batasan,
+        isi_soal: formSoal.isi,
+        ustadz_email: user.email
+      }]);
     }
+    
+    setFormSoal({ pelajaran: '', kelas: 'Kelas 1 A', batasan: '', isi: '' });
+    alert("Soal berhasil disimpan di HP (Offline) & Cloud (Online)!");
+    setModeSoal('menu');
   };
 
-  // MENGAMBIL DAFTAR KELAS SECARA UNIK DARI DATABASE MURID
-  const listKelasUnik = [...new Set(muridList.map(m => m.kelas))];
+  // Logika Otomatis Pengelompokan Menjadi Folder Berdasarkan Fan/Pelajaran
+  const folders = listBankSoal.reduce((acc, item) => {
+    const namaFan = item.pelajaran || "Lainnya";
+    if (!acc[namaFan]) acc[namaFan] = [];
+    acc[namaFan].push(item);
+    return acc;
+  }, {});
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans max-w-md mx-auto shadow-xl border-x border-slate-200">
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans max-w-md mx-auto shadow-2xl border-x border-slate-200 overflow-hidden">
       
-      {/* HEADER */}
-      <header className="bg-emerald-600 text-white px-4 py-3 sticky top-0 z-50 flex items-center justify-between shadow-md">
+      {/* 🟢 TOP NAVIGATION BAR */}
+      <header className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
         <div className="flex items-center gap-2">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-          </svg>
-          <h1 className="text-xl font-bold tracking-wide">Buku Ustaz</h1>
+          <i className="fa-solid fa-book-open text-lg"></i>
+          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-850 px-2 py-0.5 rounded-full ml-1">v2.0</span></h1>
         </div>
-
-        <div className="flex items-center gap-2">
-          {showInstallBtn && (
-            <button onClick={handleInstallPWA} className="bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-semibold py-1.5 px-3 rounded-full flex items-center gap-1 animate-pulse shadow">
-              🚀 Instal HP
-            </button>
-          )}
-          {user ? (
-            <button onClick={handleLogout} className="bg-emerald-700 hover:bg-emerald-800 p-1.5 rounded-full">
-              <img src={user.user_metadata.avatar_url} alt="User" className="w-6 h-6 rounded-full border border-white" />
-            </button>
-          ) : (
-            <button onClick={handleLoginGoogle} className="bg-white text-emerald-700 hover:bg-slate-100 p-1.5 rounded-full">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12.24 10.285V13.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.866-3.577-7.866-8s3.536-8 7.866-8c2.46 0 4.105 1.025 5.047 1.926l2.427-2.334C17.955 2.192 15.34 1 12.24 1 6.033 1 1 6.033 1 12.24s5.033 11.24 11.24 11.24c6.478 0 10.793-4.537 10.793-10.986 0-.746-.08-1.32-.176-1.885H12.24z"/>
-              </svg>
-            </button>
-          )}
-        </div>
+        {loading && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
       </header>
 
-      {/* KONTEN UTAMA */}
-      <main className="flex-1 px-4 py-4 pb-24 overflow-y-auto">
+      {/* 📱 KONTEN UTAMA (SCROLLABLE) */}
+      <main className="flex-1 overflow-y-auto px-4 py-5 pb-28">
         
-        {loading && <div className="text-center text-xs text-emerald-600 font-bold mb-2 animate-bounce">Sinkronisasi Database Cloud...</div>}
-
-        {/* MODUL TAB 1: ABSEN */}
-        {activeTab === 'absen' && (
-          <div className="space-y-4">
-            
-            {/* KONDISI A: JIKA BELUM ADA KELAS YANG DIKLIK (TAMPILKAN DAFTAR KELAS) */}
-            {kelasTerpilih === null ? (
-              <div className="space-y-3">
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
-                  <h2 className="font-bold text-slate-800 text-base">Silakan Pilih Kelas</h2>
-                  <p className="text-xs text-slate-400">Tanggal Absensi: {absensi.tanggal}</p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2">
-                  {listKelasUnik.map((kelas, idx) => {
-                    const jumlahSantri = muridList.filter(m => m.kelas === kelas).length;
-                    const sudahAbsen = muridList.filter(m => m.kelas === kelas && absensi.data[m.id]).length;
-
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setKelasTerpilih(kelas)}
-                        className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center hover:border-emerald-500 text-left transition-all group"
-                      >
-                        <div>
-                          <h3 className="font-bold text-slate-800 group-hover:text-emerald-600 transition-colors">{kelas}</h3>
-                          <p className="text-xs text-slate-400 mt-0.5">{jumlahSantri} Santri Terdaftar</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold ${sudahAbsen === jumlahSantri ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
-                            {sudahAbsen} / {jumlahSantri} Diisi
-                          </span>
-                          <svg className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              
-              /* KONDISI B: JIKA KELAS SUDAH DIKLIK (TAMPILKAN DAFTAR MURID DI KELAS TERSEBUT) */
-              <div className="space-y-4">
-                {/* Header Sub-Menu Kelas dengan Tombol Back */}
-                <div className="bg-white rounded-xl p-3.5 shadow-sm border border-slate-100 flex items-center gap-3">
-                  <button 
-                    onClick={() => setKelasTerpilih(null)}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition"
-                    title="Kembali ke Daftar Kelas"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
+        {/* TAB 1: HOME */}
+        {activeTab === 'home' && (
+          <div className="space-y-5">
+             <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 p-6 rounded-3xl text-white shadow-lg mb-4 relative overflow-hidden">
+                <div className="absolute right-[-20px] bottom-[-20px] text-emerald-500 text-9xl font-black opacity-20">📚</div>
+                <h2 className="text-xl font-bold">Ahlan wa Sahlan,</h2>
+                <p className="text-xs opacity-90 mt-1">Sistem manajemen madrasah berbasis cloud dan offline siap digunakan.</p>
+                
+                {!user ? (
+                  <button onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })} className="mt-4 bg-white text-emerald-700 font-bold text-xs px-4 py-2.5 rounded-xl shadow flex items-center gap-2 hover:bg-emerald-50 transition">
+                    <i className="fa-brands fa-google text-red-500"></i> Hubungkan Akun Google
                   </button>
-                  <div>
-                    <h2 className="font-bold text-slate-800 text-base">Presensi {kelasTerpilih}</h2>
-                    <p className="text-xs text-slate-400">Menejemen Absen Hari Ini</p>
+                ) : (
+                  <div className="mt-4 inline-flex items-center gap-2 bg-emerald-900/40 px-3 py-1.5 rounded-lg text-xs font-medium">
+                    <div className="w-2 height-2 w-2 h-2 bg-lime-400 rounded-full animate-pulse"></div>
+                    Terhubung: {user.email}
+                  </div>
+                )}
+             </div>
+
+             <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col justify-between">
+                   <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Data Base Santri</span>
+                   <p className="text-3xl font-black text-emerald-600 mt-2">{muridList.length} <span className="text-xs font-normal text-slate-400">Anak</span></p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col justify-between">
+                   <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Koleksi Bank Soal</span>
+                   <p className="text-3xl font-black text-emerald-600 mt-2">{listBankSoal.length} <span className="text-xs font-normal text-slate-400">Soal</span></p>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* TAB 2: DATA BASE (Pembaruan Fitur Menu Murid) */}
+        {activeTab === 'database' && (
+          <div className="space-y-5">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 space-y-3">
+              <div className="flex items-center gap-2 border-b pb-2 mb-1">
+                <i className="fa-solid fa-user-plus text-emerald-600"></i>
+                <h3 className="font-bold text-slate-800 text-sm">Pendaftaran Data Base Santri</h3>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500">Nama Lengkap</label>
+                <input type="text" placeholder="Masukkan nama lengkap santri" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.nama} onChange={e => setFormSantri({...formSantri, nama: e.target.value})} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500">Kelas Madrasah</label>
+                <select className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50/50 outline-none focus:ring-2 ring-emerald-500" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})}>
+                  {['Kelas 1 A', 'Kelas 1 B', 'Kelas 2 A', 'Kelas 2 B'].map(k => <option key={k}>{k}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500">Alamat Rumah</label>
+                <input type="text" placeholder="Contoh: Kaliwates, Jember" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.alamat} onChange={e => setFormSantri({...formSantri, alamat: e.target.value})} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500">Domisili Tinggal</label>
+                <input type="text" placeholder="Contoh: Asrama Sunan Ampel / Luar Pondok" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.domisili} onChange={e => setFormSantri({...formSantri, domisili: e.target.value})} />
+              </div>
+
+              <button onClick={handleSimpanSantri} className="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-700 transition shadow-md mt-2 flex items-center justify-center gap-2">
+                <i className="fa-solid fa-floppy-disk"></i> Simpan ke Data Base
+              </button>
+            </div>
+            
+            <div className="space-y-2.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Daftar Santri Aktif</p>
+              {muridList.map(m => (
+                <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden">
+                  <div className="absolute right-3 top-3 bg-emerald-50 text-emerald-700 text-[9px] font-bold uppercase px-2 py-1 rounded-md">
+                    {m.kelas}
+                  </div>
+                  <p className="font-bold text-slate-800 pr-16">{m.nama}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
+                    <p className="truncate">📍 <span className="font-medium">Alamat:</span> {m.alamat || '-'}</p>
+                    <p className="truncate">🏠 <span className="font-medium">Domisili:</span> {m.domisili || '-'}</p>
                   </div>
                 </div>
+              ))}
+              {muridList.length === 0 && <p className="text-center text-xs text-slate-400 py-6">Belum ada data santri di database.</p>}
+            </div>
+          </div>
+        )}
 
-                {/* List Murid yang Sesuai Kelas Terpilih */}
-                <div className="space-y-2">
-                  {muridList
-                    .filter(m => m.kelas === kelasTerpilih)
-                    .map((murid) => {
-                      const currentStatus = absensi.data[murid.id] || '';
-                      return (
-                        <div key={murid.id} className="bg-white rounded-xl p-3 shadow-sm border border-slate-100 flex flex-col gap-2">
-                          <h3 className="font-semibold text-slate-800 text-sm">{murid.nama}</h3>
-
-                          {/* Tombol Opsi Status Kehadiran */}
-                          <div className="grid grid-cols-4 gap-1.5 mt-1">
-                            {['Hadir', 'Izin', 'Sakit', 'Alpa'].map((status) => {
-                              const isSelected = currentStatus === status;
-                              const colors = {
-                                Hadir: isSelected ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600',
-                                Izin: isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600',
-                                Sakit: isSelected ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600',
-                                Alpa: isSelected ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
-                              };
-                              return (
-                                <button
-                                  key={status}
-                                  onClick={() => handleStatusAbsen(murid.id, status)}
-                                  className={`text-xs py-1.5 font-bold rounded-lg transition-all ${colors[status]}`}
-                                >
-                                  {status}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
+        {/* TAB 3: MODUL SOAL */}
+        {activeTab === 'soal' && (
+          <div className="space-y-4">
+            
+            {/* TAMPILAN MENU UTAMA SOAL */}
+            {modeSoal === 'menu' && (
+              <div className="space-y-4 pt-4">
+                <div className="text-center pb-2">
+                  <h3 className="font-bold text-slate-800 text-base">Modul Ujian & Bank Soal</h3>
+                  <p className="text-xs text-slate-400">Kelola pembuatan dan arsip berkas soal ujian madrasah</p>
                 </div>
+                
+                <button onClick={() => setModeSoal('buat')} className="w-full bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4 text-left hover:border-emerald-500 transition group">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl group-hover:bg-emerald-600 group-hover:text-white transition">
+                    <i className="fa-solid fa-pen-to-square"></i>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-800 block text-sm">Buat Soal Ujian Baru</span>
+                    <span className="text-xs text-slate-400 block mt-0.5">Tulis lembar pertanyaan ujian baru secara instan</span>
+                  </div>
+                </button>
 
-                {/* Aksi Simpan */}
-                <div className="flex gap-2 pt-2">
-                  <button onClick={() => setKelasTerpilih(null)} className="bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl text-sm transition">
-                    Kembali
-                  </button>
-                  <button onClick={simpanAbsensiKeDatabase} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md transition text-sm">
-                    Simpan Rekap Kelas
+                <button onClick={() => setModeSoal('bank')} className="w-full bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4 text-left hover:border-emerald-500 transition group">
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-white transition">
+                    <i className="fa-solid fa-folder-open"></i>
+                  </div>
+                  <div>
+                    <span className="font-bold text-slate-800 block text-sm">Buka Bank Soal Arsip</span>
+                    <span className="text-xs text-slate-400 block mt-0.5">Lihat kumpulan soal otomatis terkelompok per-Fan</span>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* FITUR 1: FORMULIR BUAT SOAL */}
+            {modeSoal === 'buat' && (
+              <div className="space-y-4">
+                <button onClick={() => setModeSoal('menu')} className="text-emerald-600 text-xs font-bold inline-flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg">
+                  <i className="fa-solid fa-arrow-left"></i> Kembali ke Menu Soal
+                </button>
+                
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 space-y-4">
+                  <h3 className="font-bold text-slate-800 border-b pb-2 text-sm flex items-center gap-2">
+                    <i className="fa-solid fa-file-pen text-emerald-600"></i> Lembar Formulir Soal Baru
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-500">Fan / Pelajaran</label>
+                      <input type="text" placeholder="Misal: Tauhid, Fiqih" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.pelajaran} onChange={e => setFormSoal({...formSoal, pelajaran: e.target.value})} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-500">Untuk Kelas</label>
+                      <select className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50/50 outline-none focus:ring-2 ring-emerald-500" value={formSoal.kelas} onChange={e => setFormSoal({...formSoal, kelas: e.target.value})}>
+                         {['Kelas 1 A', 'Kelas 1 B', 'Kelas 2 A', 'Kelas 2 B'].map(k => <option key={k}>{k}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">Batasan Ruang Lingkup Materi</label>
+                    <input type="text" placeholder="Contoh: Bab 1 s/d 4 atau Semester Ganjil" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.batasan} onChange={e => setFormSoal({...formSoal, batasan: e.target.value})} />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500">Layar Lembar Kosong Soal</label>
+                    <textarea placeholder="Tuliskan butir-butir soal pertanyaan di sini secara urut..." rows="9" className="w-full border border-slate-200 rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50 font-mono" value={formSoal.isi} onChange={e => setFormSoal({...formSoal, isi: e.target.value})}></textarea>
+                  </div>
+
+                  <button onClick={handleSimpanSoal} className="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-md hover:bg-emerald-700 transition flex items-center justify-center gap-2">
+                    <i className="fa-solid fa-cloud-arrow-up"></i> 💾 Save Offline & Online
                   </button>
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* MODUL TAB 2: HOME */}
-        {activeTab === 'home' && (
-          <div className="space-y-4">
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl p-5 shadow-md">
-              <h2 className="text-lg font-bold">Assalamu'alaikum, Ustaz</h2>
-              <p className="text-sm opacity-90 mt-1">Selamat memandu madrasah hari ini dengan sistem awan digital.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-center">
-                <span className="text-2xl">👥</span>
-                <h3 className="text-xl font-bold text-slate-800 mt-1">{muridList.length}</h3>
-                <p className="text-xs text-slate-400">Total Santri</p>
-              </div>
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-center">
-                <span className="text-2xl">📝</span>
-                <h3 className="text-xl font-bold text-slate-800 mt-1">
-                  {Object.values(absensi.data).filter(s => s === 'Hadir').length}
-                </h3>
-                <p className="text-xs text-slate-400">Hadir Hari Ini</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODUL TAB 3: MURID */}
-        {activeTab === 'murid' && (
-          <div className="space-y-4">
-            <form onSubmit={handleTambahMurid} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
-              <h3 className="font-bold text-slate-800 text-sm">Tambah Santri Baru</h3>
-              <input type="text" placeholder="Nama Lengkap" value={inputNama} onChange={(e) => setInputNama(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-emerald-500" />
-              <div className="flex gap-2">
-                <select value={inputKelas} onChange={(e) => setInputKelas(e.target.value)} className="text-sm border border-slate-200 rounded-lg p-2 bg-white flex-1 focus:outline-emerald-500">
-                  <option>Kelas 1 A</option>
-                  <option>Kelas 1 B</option>
-                  <option>Kelas 2 A</option>
-                  <option>Kelas 2 B</option>
-                </select>
-                <button type="submit" className="bg-emerald-600 text-white font-semibold text-sm px-4 rounded-lg">Tambah</button>
-              </div>
-            </form>
-
-            <div className="bg-white rounded-xl shadow-sm border border-slate-100 divide-y divide-slate-100">
-              <div className="p-3 bg-slate-50 rounded-t-xl font-bold text-xs text-slate-500">DAFTAR SANTRI AKTIF</div>
-              {muridList.map(m => (
-                <div key={m.id} className="p-3 flex justify-between items-center">
-                  <div>
-                    <p className="font-medium text-sm text-slate-800">{m.nama}</p>
-                    <p className="text-xs text-slate-400">{m.kelas}</p>
+            {/* FITUR 2: BANK SOAL BERBASIS FOLDER OTOMATIS */}
+            {modeSoal === 'bank' && (
+              <div className="space-y-4">
+                <button onClick={() => { if(folderTerpilih) setFolderTerpilih(null); else setModeSoal('menu'); }} className="text-emerald-600 text-xs font-bold inline-flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg">
+                  <i className="fa-solid fa-arrow-left"></i> {folderTerpilih ? "Keluar Folder" : "Kembali ke Menu Soal"}
+                </button>
+                
+                {/* 📂 Tampilan Folder Grid Utama */}
+                {!folderTerpilih ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    {Object.keys(folders).map(fan => (
+                      <button key={fan} onClick={() => setFolderTerpilih(fan)} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/70 flex flex-col items-center text-center gap-2 hover:border-amber-400 hover:bg-amber-50/20 transition relative overflow-hidden group">
+                        <span className="text-5xl text-amber-400 group-hover:scale-110 transition duration-200">📁</span>
+                        <span className="font-bold text-slate-800 text-xs truncate w-full mt-1">Soal {fan}</span>
+                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-medium">{folders[fan].length} Berkas</span>
+                      </button>
+                    ))}
+                    {Object.keys(folders).length === 0 && (
+                      <div className="col-span-2 text-center py-12 bg-white rounded-2xl border border-dashed text-slate-400">
+                        <p className="text-3xl">📭</p>
+                        <p className="text-xs mt-2 font-medium">Belum ada arsip soal yang tersimpan.</p>
+                      </div>
+                    )}
                   </div>
-                  <button onClick={() => setMuridList(muridList.filter(item => item.id !== m.id))} className="text-xs text-rose-500 bg-rose-50 hover:bg-rose-100 py-1 px-2 rounded-lg">Hapus</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* MODUL TAB 4: SOAL */}
-        {activeTab === 'soal' && (
-          <div className="space-y-4">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
-              <h3 className="font-bold text-slate-800 text-sm">Bank Pertanyaan / Tugas</h3>
-              <div className="flex gap-2">
-                <input type="text" placeholder="Ketik materi atau pertanyaan..." value={inputSoal} onChange={(e) => setInputSoal(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2 focus:outline-emerald-500" />
-                <button onClick={() => { if(!inputSoal.trim()) return; setSoalList([...soalList, inputSoal]); setInputSoal(''); }} className="bg-emerald-600 text-white font-semibold text-sm px-4 rounded-lg">Simpan</button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {soalList.length === 0 ? (
-                <p className="text-center text-sm text-slate-400 mt-6">Belum ada bank soal.</p>
-              ) : (
-                soalList.map((s, idx) => (
-                  <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm text-sm text-slate-700 flex gap-2">
-                    <span className="font-bold text-emerald-600">{idx + 1}.</span>
-                    <p className="flex-1">{s}</p>
+                ) : (
+                  /* 📑 Tampilan Kumpulan Soal di Dalam Folder yang Terpilih */
+                  <div className="space-y-3.5">
+                    <div className="bg-amber-50 border border-amber-200/70 p-3 rounded-xl flex items-center gap-2 text-amber-800">
+                      <span>📂</span>
+                      <p className="text-xs font-bold">Arsip Folder: <span className="underline uppercase">{folderTerpilih}</span></p>
+                    </div>
+                    
+                    {folders[folderTerpilih].map(s => (
+                      <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm space-y-3">
+                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-b border-slate-100 pb-2">
+                          <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600">{s.kelas}</span>
+                          <span className="text-emerald-600">📖 {s.batasan || "Semua Materi"}</span>
+                        </div>
+                        <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-mono bg-slate-50 p-3 rounded-xl border border-slate-100">{s.isi_soal || s.isi}</p>
+                      </div>
+                    ))}
                   </div>
-                ))
-              )}
-            </div>
+                )}
+              </div>
+            )}
+
           </div>
         )}
-
       </main>
 
-      {/* NAVIGASI BAWAH */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 h-16 flex items-center justify-around z-50 shadow-lg">
-        <button onClick={() => { setActiveTab('home'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'home' ? 'text-emerald-600' : 'text-slate-400'}`}>
-          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-          Home
+      {/* 📱 BOTTOM NAVIGATION BAR (BOTTOM NAV) */}
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200/80 h-22 flex items-center justify-around z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.04)] px-3">
+        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-full py-2 transition ${activeTab === 'home' ? 'text-emerald-600' : 'text-slate-400'}`}>
+           <i className={`fa-solid fa-house mb-1 text-base ${activeTab === 'home' ? 'text-lg' : ''}`}></i>
+           <span className="text-[9px] font-bold uppercase tracking-wider">Home</span>
         </button>
-        <button onClick={() => { setActiveTab('murid'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'murid' ? 'text-emerald-600' : 'text-slate-400'}`}>
-          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
-          Murid
+        <button onClick={() => setActiveTab('database')} className={`flex flex-col items-center justify-center w-full py-2 transition ${activeTab === 'database' ? 'text-emerald-600' : 'text-slate-400'}`}>
+           <i className={`fa-solid fa-database mb-1 text-base ${activeTab === 'database' ? 'text-lg' : ''}`}></i>
+           <span className="text-[9px] font-bold uppercase tracking-wider">Data Base</span>
         </button>
-        <button onClick={() => { setActiveTab('absen'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'absen' ? 'text-emerald-600' : 'text-slate-400'}`}>
-          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-          Absen
-        </button>
-        <button onClick={() => { setActiveTab('soal'); setKelasTerpilih(null); }} className={`flex flex-col items-center justify-center w-full h-full text-xs font-medium transition ${activeTab === 'soal' ? 'text-emerald-600' : 'text-slate-400'}`}>
-          <svg className="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-          Soal
+        <button onClick={() => { setActiveTab('soal'); setModeSoal('menu'); }} className={`flex flex-col items-center justify-center w-full py-2 transition ${activeTab === 'soal' ? 'text-emerald-600' : 'text-slate-400'}`}>
+           <i className={`fa-solid fa-file-lines mb-1 text-base ${activeTab === 'soal' ? 'text-lg' : ''}`}></i>
+           <span className="text-[9px] font-bold uppercase tracking-wider">Soal</span>
         </button>
       </nav>
 
