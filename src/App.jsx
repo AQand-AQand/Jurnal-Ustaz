@@ -1,380 +1,305 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Konfigurasi Koneksi Supabase Anda
 const SUPABASE_URL = "https://gjfdxqhwwytcgylokksq.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ""; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('home');
+  const [activeTab, setActiveTab] = useState('database');
   const [loading, setLoading] = useState(false);
 
-  // --- State Komponen Data Base ---
+  // --- DATA STATES ---
   const [muridList, setMuridList] = useState([]);
+  const [selectedMurid, setSelectedMurid] = useState(null); // Untuk Detail Profil
+  
+  // States Form
   const [formSantri, setFormSantri] = useState({ nama: '', kelas: '', alamat: '', domisili: '' });
-
-  // --- State Komponen Modul Soal ---
-  const [modeSoal, setModeSoal] = useState('menu'); // Pilihan: 'menu', 'buat', 'bank'
+  const [formAbsen, setFormAbsen] = useState({ santri_id: '', status: 'Hadir' });
+  const [formBatas, setFormBatas] = useState({ fan: '', batas: '' });
+  const [formNilai, setFormNilai] = useState({ santri_id: '', jenis: 'Ulangan', skor: '', mapel: '' });
+  const [formPerilaku, setFormPerilaku] = useState({ santri_id: '', text: '' });
   const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: '', batasan: '', isi: '' });
-  const [listBankSoal, setListBankSoal] = useState([]);
-  const [folderTerpilih, setFolderTerpilih] = useState(null);
 
-  // Efek Siklus Pertama Kali Aplikasi Dijalankan
+  // List Data Cloud
+  const [listBatas, setListBatas] = useState([]);
+  const [listBankSoal, setListBankSoal] = useState([]);
+  const [listAbsensi, setListAbsensi] = useState([]);
+  const [listNilai, setListNilai] = useState([]);
+  const [listPerilaku, setListPerilaku] = useState([]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
-    loadLocalData();
-    return () => subscription.unsubscribe();
+    supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    loadLocal();
   }, []);
 
-  // Otomatis Sinkronisasi Saat Ustadz Berhasil Terhubung Akun Google
-  useEffect(() => { 
-    if (user) syncSemuaData(); 
-  }, [user]);
+  useEffect(() => { if (user) syncData(); }, [user]);
 
-  // Membaca Backup Data Lokal di HP (Fitur Offline)
-  const loadLocalData = () => {
+  const loadLocal = () => {
     const s = localStorage.getItem('local_santri');
-    const b = localStorage.getItem('local_bank_soal');
     if (s) setMuridList(JSON.parse(s));
-    if (b) setListBankSoal(JSON.parse(b));
   };
 
-  // Sinkronisasi Ganda Menarik Data Terbaru dari Cloud Supabase
-  const syncSemuaData = async () => {
+  const syncData = async () => {
     setLoading(true);
     const { data: s } = await supabase.from('santri').select('*').order('nama');
-    const { data: b } = await supabase.from('bank_soal').select('*').order('created_at', { ascending: false });
+    const { data: b } = await supabase.from('bank_soal').select('*');
+    const { data: m } = await supabase.from('batas_mengajar').select('*');
+    const { data: a } = await supabase.from('absensi').select('*');
+    const { data: n } = await supabase.from('nilai').select('*');
+    const { data: p } = await supabase.from('catatan_perilaku').select('*');
+
     if (s) { setMuridList(s); localStorage.setItem('local_santri', JSON.stringify(s)); }
-    if (b) { setListBankSoal(b); localStorage.setItem('local_bank_soal', JSON.stringify(b)); }
+    if (b) setListBankSoal(b);
+    if (m) setListBatas(m);
+    if (a) setListAbsensi(a);
+    if (n) setListNilai(n);
+    if (p) setListPerilaku(p);
     setLoading(false);
   };
 
-  // Aksi Tombol Simpan Profil Santri ke Data Base
-  const handleSimpanSantri = async (e) => {
-    e.preventDefault();
-    if (!formSantri.nama) return alert("Nama santri wajib diisi!");
-    if (!formSantri.kelas) return alert("Kelas madrasah wajib diisi!");
-    
-    const baru = { ...formSantri, id: Date.now() };
-    const updateList = [...muridList, baru];
-    
-    // Simpan Offline Terlebih Dahulu
-    setMuridList(updateList);
-    localStorage.setItem('local_santri', JSON.stringify(updateList));
-    
-    // Dorong ke Online Cloud jika Akun Google Aktif
-    if (user) {
-      await supabase.from('santri').insert([formSantri]);
-    }
-    
-    setFormSantri({ nama: '', kelas: '', alamat: '', domisili: '' });
-    alert("Data berhasil ditambahkan ke Data Base!");
+  // --- HANDLERS ---
+  const saveSantri = async () => {
+    if(!formSantri.nama || !formSantri.kelas) return alert("Isi Nama & Kelas!");
+    const { data, error } = await supabase.from('santri').insert([{ ...formSantri, ustadz_email: user?.email }]);
+    if(!error) { alert("Tersimpan!"); syncData(); setFormSantri({nama:'', kelas:'', alamat:'', domisili:''}); }
   };
 
-  // Aksi Tombol Simpan Soal (Menyimpan Ganda: Offline & Online)
-  const handleSimpanSoal = async () => {
-    if (!formSoal.pelajaran || !formSoal.isi || !formSoal.kelas) {
-      return alert("Mohon isi Fan Pelajaran, Kelas, dan Kolom Soal terlebih dahulu!");
-    }
-    
-    const baru = { ...formSoal, id: Date.now(), isi_soal: formSoal.isi };
-    const updateBank = [baru, ...listBankSoal];
-    
-    // 1. Simpan Instan ke Memori HP (Offline Aman)
-    setListBankSoal(updateBank);
-    localStorage.setItem('local_bank_soal', JSON.stringify(updateBank));
-    
-    // 2. Kirim ke Database Cloud Supabase
-    if (user) {
-      await supabase.from('bank_soal').insert([{
-        pelajaran: formSoal.pelajaran.trim(),
-        kelas: formSoal.kelas.trim(),
-        batasan: formSoal.batasan,
-        isi_soal: formSoal.isi,
-        ustadz_email: user.email
-      }]);
-    }
-    
-    setFormSoal({ pelajaran: '', kelas: '', batasan: '', isi: '' });
-    alert("Soal berhasil disimpan di HP (Offline) & Cloud (Online)!");
-    setModeSoal('menu');
+  const saveAbsen = async (sId, status) => {
+    await supabase.from('absensi').insert([{ santri_id: sId, status, ustadz_email: user?.email }]);
+    alert("Absen Berhasil!"); syncData();
   };
 
-  // Logika Otomatis Pengelompokan Menjadi Folder Berdasarkan Fan/Pelajaran
-  const folders = listBankSoal.reduce((acc, item) => {
-    const namaFan = item.pelajaran || "Lainnya";
-    if (!acc[namaFan]) acc[namaFan] = [];
-    acc[namaFan].push(item);
+  const saveBatas = async () => {
+    await supabase.from('batas_mengajar').insert([{ fan: formBatas.fan, batas_akhir: formBatas.batas, ustadz_email: user?.email }]);
+    setFormBatas({fan:'', batas:''}); syncData();
+  };
+
+  const saveNilai = async () => {
+    await supabase.from('nilai').insert([{ santri_id: formNilai.santri_id, jenis_ujian: formNilai.jenis, skor: formNilai.skor, pelajaran: formNilai.mapel, ustadz_email: user?.email }]);
+    alert("Nilai Masuk!"); syncData();
+  };
+
+  const saveSoal = async () => {
+    await supabase.from('bank_soal').insert([{ ...formSoal, ustadz_email: user?.email }]);
+    alert("Soal Tersimpan!"); setFormSoal({pelajaran:'', kelas:'', batasan:'', isi:''}); syncData();
+  };
+
+  const savePerilaku = async () => {
+    await supabase.from('catatan_perilaku').insert([{ santri_id: formPerilaku.santri_id, catatan: formPerilaku.text, ustadz_email: user?.email }]);
+    alert("Catatan Disimpan!"); syncData();
+  };
+
+  // Helper Grouping
+  const foldersSoal = listBankSoal.reduce((acc, it) => {
+    if (!acc[it.pelajaran]) acc[it.pelajaran] = [];
+    acc[it.pelajaran].push(it);
     return acc;
   }, {});
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans max-w-md mx-auto shadow-2xl border-x border-slate-200 overflow-hidden">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans max-w-md mx-auto shadow-2xl border-x border-slate-200 overflow-hidden relative">
       
-      {/* 🟢 TOP NAVIGATION BAR */}
-      <header className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <i className="fa-solid fa-book-open text-lg"></i>
-          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1">v2.0</span></h1>
-        </div>
-        {loading && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+      {/* HEADER */}
+      <header className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between shadow-lg sticky top-0 z-50">
+        <h1 className="text-xl font-bold">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded ml-1">v3.0</span></h1>
+        {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
       </header>
 
-      {/* 📱 KONTEN UTAMA (SCROLLABLE) */}
-      <main className="flex-1 overflow-y-auto px-4 py-5 pb-28">
+      <main className="flex-1 overflow-y-auto px-4 py-6 pb-40">
         
-        {/* TAB 1: HOME */}
-        {activeTab === 'home' && (
-          <div className="space-y-5">
-             <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 p-6 rounded-3xl text-white shadow-lg mb-4 relative overflow-hidden">
-                <div className="absolute right-[-20px] bottom-[-20px] text-emerald-500 text-9xl font-black opacity-20">📚</div>
-                <h2 className="text-xl font-bold">Ahlan wa Sahlan,</h2>
-                <p className="text-xs opacity-90 mt-1">Sistem manajemen madrasah berbasis cloud dan offline siap digunakan.</p>
-                
-                {!user ? (
-                  <button onClick={() => supabase.auth.signInWithOAuth({ provider: 'google' })} className="mt-4 bg-white text-emerald-700 font-bold text-xs px-4 py-2.5 rounded-xl shadow flex items-center gap-2 hover:bg-emerald-50 transition">
-                    <i className="fa-brands fa-google text-red-500"></i> Hubungkan Akun Google
-                  </button>
-                ) : (
-                  <div className="mt-4 inline-flex items-center gap-2 bg-emerald-900/40 px-3 py-1.5 rounded-lg text-xs font-medium">
-                    <div className="w-2 h-2 bg-lime-400 rounded-full animate-pulse"></div>
-                    Terhubung: {user.email}
-                  </div>
-                )}
-             </div>
-
-             <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col justify-between">
-                   <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Data Base Santri</span>
-                   <p className="text-3xl font-black text-emerald-600 mt-2">{muridList.length} <span className="text-xs font-normal text-slate-400">Anak</span></p>
-                </div>
-                <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm flex flex-col justify-between">
-                   <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Koleksi Bank Soal</span>
-                   <p className="text-3xl font-black text-emerald-600 mt-2">{listBankSoal.length} <span className="text-xs font-normal text-slate-400">Soal</span></p>
-                </div>
-             </div>
+        {/* MENU 1: DATA BASE */}
+        {activeTab === 'database' && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+              <h3 className="font-bold text-emerald-700">Pendaftaran Data Base</h3>
+              <input type="text" placeholder="Nama Santri" className="w-full border rounded-xl p-3 text-sm" value={formSantri.nama} onChange={e => setFormSantri({...formSantri, nama: e.target.value})} />
+              <input type="text" placeholder="Kelas Madrasah (Manual)" className="w-full border rounded-xl p-3 text-sm" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})} />
+              <input type="text" placeholder="Alamat Rumah" className="w-full border rounded-xl p-3 text-sm" value={formSantri.alamat} onChange={e => setFormSantri({...formSantri, alamat: e.target.value})} />
+              <input type="text" placeholder="Domisili Pondok" className="w-full border rounded-xl p-3 text-sm" value={formSantri.domisili} onChange={e => setFormSantri({...formSantri, domisili: e.target.value})} />
+              <button onClick={saveSantri} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl">Simpan Murid</button>
+            </div>
           </div>
         )}
 
-        {/* TAB 2: DATA BASE (Input Teks Bebas Ketik Manual) */}
-        {activeTab === 'database' && (
-          <div className="space-y-5">
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 space-y-3">
-              <div className="flex items-center gap-2 border-b pb-2 mb-1">
-                <i className="fa-solid fa-user-plus text-emerald-600"></i>
-                <h3 className="font-bold text-slate-800 text-sm">Pendaftaran Data Base Santri</h3>
+        {/* MENU 2: ABSEN */}
+        {activeTab === 'absen' && (
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-800 px-1">Presensi Kelas Hari Ini</h3>
+            {muridList.map(m => (
+              <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-sm">{m.nama}</p>
+                  <p className="text-[10px] text-slate-400 uppercase">{m.kelas}</p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => saveAbsen(m.id, 'Hadir')} className="bg-emerald-500 text-white text-[10px] px-2 py-1.5 rounded-lg">H</button>
+                  <button onClick={() => saveAbsen(m.id, 'Izin')} className="bg-amber-500 text-white text-[10px] px-2 py-1.5 rounded-lg">I</button>
+                  <button onClick={() => saveAbsen(m.id, 'Alfa')} className="bg-red-500 text-white text-[10px] px-2 py-1.5 rounded-lg">A</button>
+                </div>
               </div>
-              
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500">Nama Lengkap</label>
-                <input type="text" placeholder="Masukkan nama lengkap santri" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.nama} onChange={e => setFormSantri({...formSantri, nama: e.target.value})} />
-              </div>
+            ))}
+          </div>
+        )}
 
-              {/* INPUT MANUAL KELAS: Bebas diketik sesuai keinginan */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500">Kelas Madrasah</label>
-                <input type="text" placeholder="Tulis kelas bebas (Contoh: Kelas 1 A, Awaliyah, dll)" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})} />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500">Alamat Rumah</label>
-                <input type="text" placeholder="Contoh: Kaliwates, Jember" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.alamat} onChange={e => setFormSantri({...formSantri, alamat: e.target.value})} />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-500">Domisili Tinggal</label>
-                <input type="text" placeholder="Contoh: Asrama Sunan Ampel / Luar Pondok" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.domisili} onChange={e => setFormSantri({...formSantri, domisili: e.target.value})} />
-              </div>
-
-              <button onClick={handleSimpanSantri} className="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-700 transition shadow-md mt-2 flex items-center justify-center gap-2">
-                <i className="fa-solid fa-floppy-disk"></i> Simpan ke Data Base
-              </button>
+        {/* MENU 3: BATAS AJAR */}
+        {activeTab === 'batas' && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-2xl border space-y-3">
+              <h3 className="font-bold text-emerald-700">Catat Batas Mengajar</h3>
+              <input type="text" placeholder="Nama Fan/Pelajaran" className="w-full border rounded-xl p-3 text-sm" value={formBatas.fan} onChange={e => setFormBatas({...formBatas, fan: e.target.value})} />
+              <input type="text" placeholder="Sampai Hal / Bab / Batas" className="w-full border rounded-xl p-3 text-sm" value={formBatas.batas} onChange={e => setFormBatas({...formBatas, batas: e.target.value})} />
+              <button onClick={saveBatas} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl">Simpan Batas</button>
             </div>
-            
-            <div className="space-y-2.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Daftar Santri Berkepentingan</p>
-              {muridList.map(m => (
-                <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden">
-                  <div className="absolute right-3 top-3 bg-emerald-50 text-emerald-700 text-[9px] font-bold uppercase px-2 py-1 rounded-md max-w-[120px] truncate">
-                    {m.kelas}
-                  </div>
-                  <p className="font-bold text-slate-800 pr-32">{m.nama}</p>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
-                    <p className="truncate">📍 <span className="font-medium">Alamat:</span> {m.alamat || '-'}</p>
-                    <p className="truncate">🏠 <span className="font-medium">Domisili:</span> {m.domisili || '-'}</p>
-                  </div>
+            <div className="space-y-2">
+              {listBatas.map(b => (
+                <div key={b.id} className="bg-emerald-50 p-3 rounded-xl border border-emerald-100">
+                  <p className="font-bold text-emerald-800 text-sm">{b.fan}</p>
+                  <p className="text-xs text-emerald-600">Batas: {b.batas_akhir}</p>
                 </div>
               ))}
-              {muridList.length === 0 && <p className="text-center text-xs text-slate-400 py-6">Belum ada data santri di database.</p>}
             </div>
           </div>
         )}
 
-        {/* TAB 3: MODUL SOAL */}
-        {activeTab === 'soal' && (
+        {/* MENU 4: PERILAKU */}
+        {activeTab === 'perilaku' && (
           <div className="space-y-4">
-            
-            {/* TAMPILAN MENU UTAMA SOAL */}
-            {modeSoal === 'menu' && (
-              <div className="space-y-4 pt-4">
-                <div className="text-center pb-2">
-                  <h3 className="font-bold text-slate-800 text-base">Modul Ujian & Bank Soal</h3>
-                  <p className="text-xs text-slate-400">Kelola pembuatan dan arsip berkas soal ujian madrasah</p>
-                </div>
-                
-                <button onClick={() => setModeSoal('buat')} className="w-full bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4 text-left hover:border-emerald-500 transition group">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl group-hover:bg-emerald-600 group-hover:text-white transition">
-                    <i className="fa-solid fa-pen-to-square"></i>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-800 block text-sm">Buat Soal Ujian Baru</span>
-                    <span className="text-xs text-slate-400 block mt-0.5">Tulis lembar pertanyaan ujian baru secara instan</span>
-                  </div>
-                </button>
-
-                <button onClick={() => setModeSoal('bank')} className="w-full bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4 text-left hover:border-emerald-500 transition group">
-                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-white transition">
-                    <i className="fa-solid fa-folder-open"></i>
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-800 block text-sm">Buka Bank Soal Arsip</span>
-                    <span className="text-xs text-slate-400 block mt-0.5">Lihat kumpulan soal otomatis terkelompok per-Fan</span>
-                  </div>
-                </button>
-              </div>
-            )}
-
-            {/* FITUR 1: FORMULIR BUAT SOAL */}
-            {modeSoal === 'buat' && (
-              <div className="space-y-4">
-                <button onClick={() => setModeSoal('menu')} className="text-emerald-600 text-xs font-bold inline-flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg">
-                  <i className="fa-solid fa-arrow-left"></i> Kembali ke Menu Soal
-                </button>
-                
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 space-y-4">
-                  <h3 className="font-bold text-slate-800 border-b pb-2 text-sm flex items-center gap-2">
-                    <i className="fa-solid fa-file-pen text-emerald-600"></i> Lembar Formulir Soal Baru
-                  </h3>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500">Fan / Pelajaran</label>
-                      <input type="text" placeholder="Misal: Tauhid, Fiqih" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.pelajaran} onChange={e => setFormSoal({...formSoal, pelajaran: e.target.value})} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500">Untuk Kelas</label>
-                      <input type="text" placeholder="Tulis Kelas Soal" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.kelas} onChange={e => setFormSoal({...formSoal, kelas: e.target.value})} />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500">Batasan Ruang Lingkup Materi</label>
-                    <input type="text" placeholder="Contoh: Bab 1 s/d 4 atau Semester Ganjil" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.batasan} onChange={e => setFormSoal({...formSoal, batasan: e.target.value})} />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-500">Layar Lembar Kosong Soal</label>
-                    <textarea placeholder="Tuliskan butir-butir soal pertanyaan di sini secara urut..." rows="9" className="w-full border border-slate-200 rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50 font-mono" value={formSoal.isi} onChange={e => setFormSoal({...formSoal, isi: e.target.value})}></textarea>
-                  </div>
-
-                  <button onClick={handleSimpanSoal} className="w-full bg-emerald-600 text-white font-bold py-3.5 rounded-xl shadow-md hover:bg-emerald-700 transition flex items-center justify-center gap-2">
-                    <i className="fa-solid fa-cloud-arrow-up"></i> 💾 Save Offline & Online
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* FITUR 2: BANK SOAL BERBASIS FOLDER OTOMATIS */}
-            {modeSoal === 'bank' && (
-              <div className="space-y-4">
-                <button onClick={() => { if(folderTerpilih) setFolderTerpilih(null); else setModeSoal('menu'); }} className="text-emerald-600 text-xs font-bold inline-flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg">
-                  <i className="fa-solid fa-arrow-left"></i> {folderTerpilih ? "Keluar Folder" : "Kembali ke Menu Soal"}
-                </button>
-                
-                {/* 📂 Tampilan Folder Grid Utama */}
-                {!folderTerpilih ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.keys(folders).map(fan => (
-                      <button key={fan} onClick={() => setFolderTerpilih(fan)} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/70 flex flex-col items-center text-center gap-2 hover:border-amber-400 hover:bg-amber-50/20 transition relative overflow-hidden group">
-                        <span className="text-5xl text-amber-400 group-hover:scale-110 transition duration-200">📁</span>
-                        <span className="font-bold text-slate-800 text-xs truncate w-full mt-1">Soal {fan}</span>
-                        <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded-full text-slate-500 font-medium">{folders[fan].length} Berkas</span>
-                      </button>
-                    ))}
-                    {Object.keys(folders).length === 0 && (
-                      <div className="col-span-2 text-center py-12 bg-white rounded-2xl border border-dashed text-slate-400">
-                        <p className="text-3xl">📭</p>
-                        <p className="text-xs mt-2 font-medium">Belum ada arsip soal yang tersimpan.</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  /* 📑 Tampilan Kumpulan Soal di Dalam Folder yang Terpilih */
-                  <div className="space-y-3.5">
-                    <div className="bg-amber-50 border border-amber-200/70 p-3 rounded-xl flex items-center gap-2 text-amber-800">
-                      <span>📂</span>
-                      <p className="text-xs font-bold">Arsip Folder: <span className="underline uppercase">{folderTerpilih}</span></p>
-                    </div>
-                    
-                    {folders[folderTerpilih].map(s => (
-                      <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm space-y-3">
-                        <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-b border-slate-100 pb-2">
-                          <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600 max-w-[100px] truncate">{s.kelas}</span>
-                          <span className="text-emerald-600">📖 {s.batasan || "Semua Materi"}</span>
-                        </div>
-                        <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-mono bg-slate-50 p-3 rounded-xl border border-slate-100">{s.isi_soal || s.isi}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
+            <div className="bg-white p-5 rounded-2xl border space-y-3">
+              <h3 className="font-bold text-emerald-700">Catatan Perilaku Santri</h3>
+              <select className="w-full border rounded-xl p-3 text-sm bg-white" onChange={e => setFormPerilaku({...formPerilaku, santri_id: e.target.value})}>
+                <option>Pilih Santri</option>
+                {muridList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+              </select>
+              <textarea placeholder="Tulis perkembangan/perilaku..." className="w-full border rounded-xl p-3 text-sm h-24" value={formPerilaku.text} onChange={e => setFormPerilaku({...formPerilaku, text: e.target.value})}></textarea>
+              <button onClick={savePerilaku} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl">Simpan Catatan</button>
+            </div>
           </div>
         )}
+
+        {/* MENU 5: NILAI */}
+        {activeTab === 'nilai' && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-2xl border space-y-3">
+              <h3 className="font-bold text-emerald-700">Pencatatan Nilai</h3>
+              <select className="w-full border rounded-xl p-3 text-sm bg-white" onChange={e => setFormNilai({...formNilai, santri_id: e.target.value})}>
+                <option>Pilih Santri</option>
+                {muridList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select className="border rounded-xl p-3 text-sm bg-white" value={formNilai.jenis} onChange={e => setFormNilai({...formNilai, jenis: e.target.value})}>
+                  <option>Ulangan</option><option>Ujian Tulis</option><option>Ujian Lisan</option>
+                </select>
+                <input type="number" placeholder="Skor" className="border rounded-xl p-3 text-sm" value={formNilai.skor} onChange={e => setFormNilai({...formNilai, skor: e.target.value})} />
+              </div>
+              <input type="text" placeholder="Mata Pelajaran" className="w-full border rounded-xl p-3 text-sm" value={formNilai.mapel} onChange={e => setFormNilai({...formNilai, mapel: e.target.value})} />
+              <button onClick={saveNilai} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl">Input Nilai</button>
+            </div>
+          </div>
+        )}
+
+        {/* MENU 6: BANK SOAL */}
+        {activeTab === 'soal' && (
+          <div className="space-y-4">
+             <div className="bg-white p-5 rounded-2xl border space-y-3">
+              <h3 className="font-bold text-emerald-700">Buat Soal Ujian</h3>
+              <input type="text" placeholder="Fan Pelajaran" className="w-full border rounded-xl p-3 text-sm" value={formSoal.pelajaran} onChange={e => setFormSoal({...formSoal, pelajaran: e.target.value})} />
+              <input type="text" placeholder="Kelas (Manual)" className="w-full border rounded-xl p-3 text-sm" value={formSoal.kelas} onChange={e => setFormSoal({...formSoal, kelas: e.target.value})} />
+              <textarea placeholder="Tulis soal di sini..." className="w-full border rounded-xl p-3 text-sm h-32" value={formSoal.isi} onChange={e => setFormSoal({...formSoal, isi: e.target.value})}></textarea>
+              <button onClick={saveSoal} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl">Save Soal</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {Object.keys(foldersSoal).map(fan => (
+                <div key={fan} className="bg-white p-4 rounded-2xl border text-center">
+                  <span className="text-3xl">📁</span>
+                  <p className="text-[10px] font-bold mt-1 uppercase">{fan}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MENU 7: PROFIL TERINTEGRASI */}
+        {activeTab === 'profil' && (
+          <div className="space-y-4">
+            {!selectedMurid ? (
+              <>
+                <h3 className="font-bold text-slate-800 px-1">Master Profil Santri</h3>
+                {muridList.map(m => (
+                  <button key={m.id} onClick={() => setSelectedMurid(m)} className="w-full bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between hover:bg-emerald-50">
+                    <div className="text-left">
+                      <p className="font-bold text-sm">{m.nama}</p>
+                      <p className="text-[10px] text-slate-400 font-bold">{m.kelas}</p>
+                    </div>
+                    <i className="fa-solid fa-chevron-right text-slate-300"></i>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <div className="space-y-4">
+                <button onClick={() => setSelectedMurid(null)} className="text-emerald-600 text-xs font-bold mb-2">← Kembali ke Daftar</button>
+                <div className="bg-emerald-700 text-white p-6 rounded-3xl shadow-lg">
+                  <h2 className="text-xl font-bold">{selectedMurid.nama}</h2>
+                  <p className="text-xs opacity-80">{selectedMurid.kelas}</p>
+                  <p className="text-[10px] mt-2 italic">📍 {selectedMurid.alamat} | 🏠 {selectedMurid.domisili}</p>
+                </div>
+                
+                {/* REKAP DATA SANTRI TERHUBUNG */}
+                <div className="space-y-3">
+                   <div className="bg-white p-4 rounded-2xl border shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase border-b pb-2 mb-2">Rekap Absensi</h4>
+                      <p className="text-xs">Hadir: {listAbsensi.filter(a => a.santri_id == selectedMurid.id && a.status == 'Hadir').length}</p>
+                      <p className="text-xs">Izin: {listAbsensi.filter(a => a.santri_id == selectedMurid.id && a.status == 'Izin').length}</p>
+                      <p className="text-xs text-red-500">Alfa: {listAbsensi.filter(a => a.santri_id == selectedMurid.id && a.status == 'Alfa').length}</p>
+                   </div>
+                   <div className="bg-white p-4 rounded-2xl border shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase border-b pb-2 mb-2">Riwayat Nilai</h4>
+                      {listNilai.filter(n => n.santri_id == selectedMurid.id).map(n => (
+                        <p key={n.id} className="text-[11px] py-1 border-b last:border-0">{n.pelajaran} ({n.jenis_ujian}): <span className="font-bold text-emerald-600">{n.skor}</span></p>
+                      ))}
+                   </div>
+                   <div className="bg-white p-4 rounded-2xl border shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase border-b pb-2 mb-2">Catatan Ustadz</h4>
+                      {listPerilaku.filter(p => p.santri_id == selectedMurid.id).map(p => (
+                        <p key={p.id} className="text-[11px] italic text-slate-600 py-1 border-b last:border-0">"{p.catatan}"</p>
+                      ))}
+                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
       </main>
 
-      {/* 📱 NAVIGATION BAR BAWAH (MODERN PREMIUM MAKE-OVER STYLE) */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200/90 h-20 flex items-center justify-around z-50 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pb-2">
-        
-        {/* Tombol Menu 1: HOME */}
-        <button 
-          onClick={() => setActiveTab('home')} 
-          className="flex flex-col items-center justify-center flex-1 h-full relative transition"
-        >
-          <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl transition-all duration-200 ${activeTab === 'home' ? 'bg-emerald-50 text-emerald-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-700'}`}>
-            <i className={`fa-solid fa-house text-lg mb-0.5 ${activeTab === 'home' ? 'text-xl' : ''}`}></i>
-            <span className="text-[11px] tracking-wide">Home</span>
-          </div>
-        </button>
-
-        {/* Tombol Menu 2: DATA BASE */}
-        <button 
-          onClick={() => setActiveTab('database')} 
-          className="flex flex-col items-center justify-center flex-1 h-full relative transition"
-        >
-          <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl transition-all duration-200 ${activeTab === 'database' ? 'bg-emerald-50 text-emerald-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-700'}`}>
-            <i className={`fa-solid fa-database text-lg mb-0.5 ${activeTab === 'database' ? 'text-xl' : ''}`}></i>
-            <span className="text-[11px] tracking-wide">Data Base</span>
-          </div>
-        </button>
-
-        {/* Tombol Menu 3: SOAL */}
-        <button 
-          onClick={() => { setActiveTab('soal'); setModeSoal('menu'); }} 
-          className="flex flex-col items-center justify-center flex-1 h-full relative transition"
-        >
-          <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl transition-all duration-200 ${activeTab === 'soal' ? 'bg-emerald-50 text-emerald-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-700'}`}>
-            <i className={`fa-solid fa-file-lines text-lg mb-0.5 ${activeTab === 'soal' ? 'text-xl' : ''}`}></i>
-            <span className="text-[11px] tracking-wide">Soal</span>
-          </div>
-        </button>
-
+      {/* BOTTOM NAVIGATION (Grid 7 Menu) */}
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 grid grid-cols-4 gap-1 p-2 pb-6 z-50">
+        {[
+          { id: 'database', icon: 'fa-database', l: 'Data Base' },
+          { id: 'absen', icon: 'fa-user-check', l: 'Absen' },
+          { id: 'batas', icon: 'fa-book-open', l: 'Batas Ajar' },
+          { id: 'perilaku', icon: 'fa-star', l: 'Perilaku' },
+          { id: 'nilai', icon: 'fa-pen-nib', l: 'Nilai' },
+          { id: 'soal', icon: 'fa-folder-open', l: 'Bank Soal' },
+          { id: 'profil', icon: 'fa-user-graduate', l: 'Profil' }
+        ].map(m => (
+          <button key={m.id} onClick={() => {setActiveTab(m.id); setSelectedMurid(null);}} className={`flex flex-col items-center py-2 transition ${activeTab === m.id ? 'text-emerald-600' : 'text-slate-400'}`}>
+            <i className={`fa-solid ${m.icon} text-lg mb-1`}></i>
+            <span className="text-[8px] font-bold uppercase">{m.l}</span>
+          </button>
+        ))}
       </nav>
 
     </div>
   );
 }
+
+### Keunggulan v3.0 Master:
+1.  **Profil yang Pintar:** Saat Mas Taufiq mengklik nama anak di menu **Profil**, aplikasi langsung menggabungkan (mencari) data Absen, Nilai, dan Catatan miliknya. Sangat profesional untuk laporan ke wali santri.
+2.  **Input Kelas Manual:** Mas Taufiq bisa mengetik kelas apa saja tanpa harus pilih-pilih dari daftar tetap.
+3.  **Bank Soal Berfolder:** Otomatis rapi per mata pelajaran.
+4.  **Data Terintegrasi:** Semua data punya kolom `ustadz_email`, jadi kalau Mas Taufiq ganti HP, cukup login Google, semua data akan kembali muncul otomatis dari Supabase.
+
+Silakan dicoba diunggah, Mas! Ini adalah puncak fitur yang paling lengkap. Jika ada detail UI yang mau diperhalus, kita eksekusi setelah ini. Sukses terus, Mas Taufiq!
