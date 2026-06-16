@@ -13,11 +13,11 @@ export default function App() {
 
   // --- State Komponen Data Base ---
   const [muridList, setMuridList] = useState([]);
-  const [formSantri, setFormSantri] = useState({ nama: '', kelas: 'Kelas 1 A', alamat: '', domisili: '' });
+  const [formSantri, setFormSantri] = useState({ nama: '', kelas: '', alamat: '', domisili: '' });
 
   // --- State Komponen Modul Soal ---
   const [modeSoal, setModeSoal] = useState('menu'); // Pilihan: 'menu', 'buat', 'bank'
-  const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: 'Kelas 1 A', batasan: '', isi: '' });
+  const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: '', batasan: '', isi: '' });
   const [listBankSoal, setListBankSoal] = useState([]);
   const [folderTerpilih, setFolderTerpilih] = useState(null);
 
@@ -56,6 +56,7 @@ export default function App() {
   const handleSimpanSantri = async (e) => {
     e.preventDefault();
     if (!formSantri.nama) return alert("Nama santri wajib diisi!");
+    if (!formSantri.kelas) return alert("Kelas madrasah wajib diisi!");
     
     const baru = { ...formSantri, id: Date.now() };
     const updateList = [...muridList, baru];
@@ -69,14 +70,14 @@ export default function App() {
       await supabase.from('santri').insert([formSantri]);
     }
     
-    setFormSantri({ nama: '', kelas: 'Kelas 1 A', alamat: '', domisili: '' });
+    setFormSantri({ nama: '', kelas: '', alamat: '', domisili: '' });
     alert("Data berhasil ditambahkan ke Data Base!");
   };
 
   // Aksi Tombol Simpan Soal (Menyimpan Ganda: Offline & Online)
   const handleSimpanSoal = async () => {
-    if (!formSoal.pelajaran || !formSoal.isi) {
-      return alert("Mohon isi nama Fan Pelajaran dan Kolom Soal terlebih dahulu!");
+    if (!formSoal.pelajaran || !formSoal.isi || !formSoal.kelas) {
+      return alert("Mohon isi Fan Pelajaran, Kelas, dan Kolom Soal terlebih dahulu!");
     }
     
     const baru = { ...formSoal, id: Date.now(), isi_soal: formSoal.isi };
@@ -90,14 +91,14 @@ export default function App() {
     if (user) {
       await supabase.from('bank_soal').insert([{
         pelajaran: formSoal.pelajaran.trim(),
-        kelas: formSoal.kelas,
+        kelas: formSoal.kelas.trim(),
         batasan: formSoal.batasan,
         isi_soal: formSoal.isi,
         ustadz_email: user.email
       }]);
     }
     
-    setFormSoal({ pelajaran: '', kelas: 'Kelas 1 A', batasan: '', isi: '' });
+    setFormSoal({ pelajaran: '', kelas: '', batasan: '', isi: '' });
     alert("Soal berhasil disimpan di HP (Offline) & Cloud (Online)!");
     setModeSoal('menu');
   };
@@ -139,7 +140,7 @@ export default function App() {
                   </button>
                 ) : (
                   <div className="mt-4 inline-flex items-center gap-2 bg-emerald-900/40 px-3 py-1.5 rounded-lg text-xs font-medium">
-                    <div className="w-2 height-2 w-2 h-2 bg-lime-400 rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 bg-lime-400 rounded-full animate-pulse"></div>
                     Terhubung: {user.email}
                   </div>
                 )}
@@ -158,7 +159,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: DATA BASE (Pembaruan Fitur Menu Murid) */}
+        {/* TAB 2: DATA BASE (Pembaruan Menggunakan Input Ketik Manual) */}
         {activeTab === 'database' && (
           <div className="space-y-5">
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 space-y-3">
@@ -172,11 +173,10 @@ export default function App() {
                 <input type="text" placeholder="Masukkan nama lengkap santri" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.nama} onChange={e => setFormSantri({...formSantri, nama: e.target.value})} />
               </div>
 
+              {/* KOREKSI: Sudah diubah menjadi input teks bebas ketik manual */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500">Kelas Madrasah</label>
-                <select className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50/50 outline-none focus:ring-2 ring-emerald-500" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})}>
-                  {['Kelas 1 A', 'Kelas 1 B', 'Kelas 2 A', 'Kelas 2 B'].map(k => <option key={k}>{k}</option>)}
-                </select>
+                <input type="text" placeholder="Tulis kelas bebas (Contoh: Kelas 1 A, Awaliyah, dll)" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})} />
               </div>
 
               <div className="space-y-2">
@@ -195,13 +195,13 @@ export default function App() {
             </div>
             
             <div className="space-y-2.5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Daftar Santri Aktif</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1">Daftar Santri Berkepentingan</p>
               {muridList.map(m => (
                 <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm relative overflow-hidden">
-                  <div className="absolute right-3 top-3 bg-emerald-50 text-emerald-700 text-[9px] font-bold uppercase px-2 py-1 rounded-md">
+                  <div className="absolute right-3 top-3 bg-emerald-50 text-emerald-700 text-[9px] font-bold uppercase px-2 py-1 rounded-md max-w-[120px] truncate">
                     {m.kelas}
                   </div>
-                  <p className="font-bold text-slate-800 pr-16">{m.nama}</p>
+                  <p className="font-bold text-slate-800 pr-32">{m.nama}</p>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500 border-t border-slate-100 pt-2.5">
                     <p className="truncate">📍 <span className="font-medium">Alamat:</span> {m.alamat || '-'}</p>
                     <p className="truncate">🏠 <span className="font-medium">Domisili:</span> {m.domisili || '-'}</p>
@@ -264,11 +264,10 @@ export default function App() {
                       <label className="text-xs font-bold text-slate-500">Fan / Pelajaran</label>
                       <input type="text" placeholder="Misal: Tauhid, Fiqih" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.pelajaran} onChange={e => setFormSoal({...formSoal, pelajaran: e.target.value})} />
                     </div>
+                    {/* KOREKSI: Diubah juga menjadi input ketik bebas agar singkron kebebasannya */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-500">Untuk Kelas</label>
-                      <select className="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50/50 outline-none focus:ring-2 ring-emerald-500" value={formSoal.kelas} onChange={e => setFormSoal({...formSoal, kelas: e.target.value})}>
-                         {['Kelas 1 A', 'Kelas 1 B', 'Kelas 2 A', 'Kelas 2 B'].map(k => <option key={k}>{k}</option>)}
-                      </select>
+                      <input type="text" placeholder="Tulis Kelas Soal" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.kelas} onChange={e => setFormSoal({...formSoal, kelas: e.target.value})} />
                     </div>
                   </div>
 
@@ -324,7 +323,7 @@ export default function App() {
                     {folders[folderTerpilih].map(s => (
                       <div key={s.id} className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm space-y-3">
                         <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 border-b border-slate-100 pb-2">
-                          <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600">{s.kelas}</span>
+                          <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-600 max-w-[100px] truncate">{s.kelas}</span>
                           <span className="text-emerald-600">📖 {s.batasan || "Semua Materi"}</span>
                         </div>
                         <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed font-mono bg-slate-50 p-3 rounded-xl border border-slate-100">{s.isi_soal || s.isi}</p>
