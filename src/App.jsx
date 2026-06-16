@@ -118,7 +118,7 @@ export default function App() {
       <header className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <i className="fa-solid fa-book-open text-lg"></i>
-          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-850 px-2 py-0.5 rounded-full ml-1">v2.0</span></h1>
+          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1">v2.0</span></h1>
         </div>
         {loading && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
       </header>
@@ -159,7 +159,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: DATA BASE (Pembaruan Menggunakan Input Ketik Manual) */}
+        {/* TAB 2: DATA BASE (Input Teks Bebas Ketik Manual) */}
         {activeTab === 'database' && (
           <div className="space-y-5">
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/60 space-y-3">
@@ -173,7 +173,7 @@ export default function App() {
                 <input type="text" placeholder="Masukkan nama lengkap santri" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.nama} onChange={e => setFormSantri({...formSantri, nama: e.target.value})} />
               </div>
 
-              {/* KOREKSI: Sudah diubah menjadi input teks bebas ketik manual */}
+              {/* INPUT MANUAL KELAS: Bebas diketik sesuai keinginan */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500">Kelas Madrasah</label>
                 <input type="text" placeholder="Tulis kelas bebas (Contoh: Kelas 1 A, Awaliyah, dll)" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})} />
@@ -264,7 +264,6 @@ export default function App() {
                       <label className="text-xs font-bold text-slate-500">Fan / Pelajaran</label>
                       <input type="text" placeholder="Misal: Tauhid, Fiqih" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.pelajaran} onChange={e => setFormSoal({...formSoal, pelajaran: e.target.value})} />
                     </div>
-                    {/* KOREKSI: Diubah juga menjadi input ketik bebas agar singkron kebebasannya */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-500">Untuk Kelas</label>
                       <input type="text" placeholder="Tulis Kelas Soal" className="w-full border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none bg-slate-50/50" value={formSoal.kelas} onChange={e => setFormSoal({...formSoal, kelas: e.target.value})} />
@@ -338,20 +337,42 @@ export default function App() {
         )}
       </main>
 
-      {/* 📱 BOTTOM NAVIGATION BAR (BOTTOM NAV) */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200/80 h-22 flex items-center justify-around z-50 shadow-[0_-5px_15px_rgba(0,0,0,0.04)] px-3">
-        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-full py-2 transition ${activeTab === 'home' ? 'text-emerald-600' : 'text-slate-400'}`}>
-           <i className={`fa-solid fa-house mb-1 text-base ${activeTab === 'home' ? 'text-lg' : ''}`}></i>
-           <span className="text-[9px] font-bold uppercase tracking-wider">Home</span>
+      {/* 📱 NAVIGATION BAR BAWAH (MODERN PREMIUM MAKE-OVER STYLE) */}
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200/90 h-20 flex items-center justify-around z-50 shadow-[0_-8px_30px_rgba(0,0,0,0.06)] px-4 pb-2">
+        
+        {/* Tombol Menu 1: HOME */}
+        <button 
+          onClick={() => setActiveTab('home')} 
+          className="flex flex-col items-center justify-center flex-1 h-full relative transition"
+        >
+          <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl transition-all duration-200 ${activeTab === 'home' ? 'bg-emerald-50 text-emerald-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-700'}`}>
+            <i className={`fa-solid fa-house text-lg mb-0.5 ${activeTab === 'home' ? 'text-xl' : ''}`}></i>
+            <span className="text-[11px] tracking-wide">Home</span>
+          </div>
         </button>
-        <button onClick={() => setActiveTab('database')} className={`flex flex-col items-center justify-center w-full py-2 transition ${activeTab === 'database' ? 'text-emerald-600' : 'text-slate-400'}`}>
-           <i className={`fa-solid fa-database mb-1 text-base ${activeTab === 'database' ? 'text-lg' : ''}`}></i>
-           <span className="text-[9px] font-bold uppercase tracking-wider">Data Base</span>
+
+        {/* Tombol Menu 2: DATA BASE */}
+        <button 
+          onClick={() => setActiveTab('database')} 
+          className="flex flex-col items-center justify-center flex-1 h-full relative transition"
+        >
+          <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl transition-all duration-200 ${activeTab === 'database' ? 'bg-emerald-50 text-emerald-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-700'}`}>
+            <i className={`fa-solid fa-database text-lg mb-0.5 ${activeTab === 'database' ? 'text-xl' : ''}`}></i>
+            <span className="text-[11px] tracking-wide">Data Base</span>
+          </div>
         </button>
-        <button onClick={() => { setActiveTab('soal'); setModeSoal('menu'); }} className={`flex flex-col items-center justify-center w-full py-2 transition ${activeTab === 'soal' ? 'text-emerald-600' : 'text-slate-400'}`}>
-           <i className={`fa-solid fa-file-lines mb-1 text-base ${activeTab === 'soal' ? 'text-lg' : ''}`}></i>
-           <span className="text-[9px] font-bold uppercase tracking-wider">Soal</span>
+
+        {/* Tombol Menu 3: SOAL */}
+        <button 
+          onClick={() => { setActiveTab('soal'); setModeSoal('menu'); }} 
+          className="flex flex-col items-center justify-center flex-1 h-full relative transition"
+        >
+          <div className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-2xl transition-all duration-200 ${activeTab === 'soal' ? 'bg-emerald-50 text-emerald-600 font-bold scale-105' : 'text-slate-500 hover:text-slate-700'}`}>
+            <i className={`fa-solid fa-file-lines text-lg mb-0.5 ${activeTab === 'soal' ? 'text-xl' : ''}`}></i>
+            <span className="text-[11px] tracking-wide">Soal</span>
+          </div>
         </button>
+
       </nav>
 
     </div>
