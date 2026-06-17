@@ -15,11 +15,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // State PWA / Instal Aplikasi
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showInstallBtn, setShowInstallBtn] = useState(false);
-
-  // State Data (Menggunakan Murid)
   const [muridList, setMuridList] = useState([]);
   const [listAbsensi, setListAbsensi] = useState([]);
   const [listBatas, setListBatas] = useState([]);
@@ -27,68 +22,18 @@ export default function App() {
   const [listNilai, setListNilai] = useState([]);
   const [listBankSoal, setListBankSoal] = useState([]);
 
-  // State UI Profil
   const [viewProfilStage, setViewProfilStage] = useState('kelas');
   const [selectedKelasProfil, setSelectedKelasProfil] = useState(null);
   const [selectedMuridProfil, setSelectedMuridProfil] = useState(null);
 
-  // State Form
-  const [formMurid, setFormMurid] = useState({ nama: '', kelas: '', alamat: '', domisili: '' });
+  const [formSantri, setFormSantri] = useState({ nama: '', kelas: '', alamat: '', domisili: '' });
   const [formBatas, setFormBatas] = useState({ fan: '', batas: '' });
-  const [formPerilaku, setFormPerilaku] = useState({ murid_id: '', catatan: '' });
-  const [formNilai, setFormNilai] = useState({ murid_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
+  const [formPerilaku, setFormPerilaku] = useState({ santri_id: '', catatan: '' });
+  const [formNilai, setFormNilai] = useState({ santri_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
   const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: '', batasan: '', isi: '' });
+
   const [filterKelasAbsen, setFilterKelasAbsen] = useState('Semua');
 
-  // 1. SISTEM DETEKSI TOMBOL KEMBALI HP (BACK BUTTON HANDLING)
-  useEffect(() => {
-    const handlePopState = (event) => {
-      if (activeTab === 'profil') {
-        if (viewProfilStage === 'detail') {
-          window.history.pushState(null, null, window.location.pathname);
-          setViewProfilStage('murid');
-        } else if (viewProfilStage === 'murid') {
-          window.history.pushState(null, null, window.location.pathname);
-          setViewProfilStage('kelas');
-        } else {
-          setActiveTab('database');
-        }
-      } else if (activeTab !== 'database') {
-        window.history.pushState(null, null, window.location.pathname);
-        setActiveTab('database');
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    window.history.pushState(null, null, window.location.pathname);
-
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeTab, viewProfilStage]);
-
-  // 2. SISTEM DETEKSI FITUR INSTAL APLIKASI (PWA PROMPT)
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallBtn(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, []);
-
-  const handleInstallAppClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('User menginstal aplikasi Buku Ustaz');
-    }
-    setDeferredPrompt(null);
-    setShowInstallBtn(false);
-  };
-
-  // Load awal & Deteksi Online/Offline
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
@@ -112,7 +57,7 @@ export default function App() {
   }, [user, isOffline]);
 
   useEffect(() => {
-    if (muridList.length > 0) localStorage.setItem('off_murid', JSON.stringify(muridList));
+    if (muridList.length > 0) localStorage.setItem('off_santri', JSON.stringify(muridList));
     if (listAbsensi.length > 0) localStorage.setItem('off_absen', JSON.stringify(listAbsensi));
     if (listBatas.length > 0) localStorage.setItem('off_batas', JSON.stringify(listBatas));
     if (listPerilaku.length > 0) localStorage.setItem('off_perilaku', JSON.stringify(listPerilaku));
@@ -121,7 +66,7 @@ export default function App() {
   }, [muridList, listAbsensi, listBatas, listPerilaku, listNilai, listBankSoal]);
 
   const loadDataLokalOffline = () => {
-    setMuridList(JSON.parse(localStorage.getItem('off_murid')) || []);
+    setMuridList(JSON.parse(localStorage.getItem('off_santri')) || []);
     setListAbsensi(JSON.parse(localStorage.getItem('off_absen')) || []);
     setListBatas(JSON.parse(localStorage.getItem('off_batas')) || []);
     setListPerilaku(JSON.parse(localStorage.getItem('off_perilaku')) || []);
@@ -130,23 +75,24 @@ export default function App() {
   };
 
   const syncSemuaDataKeCloud = async () => {
+    if (!navigator.onLine || !SUPABASE_ANON_KEY) return;
     setLoading(true);
     try {
-      const { data: m } = await supabase.from('murid').select('*').order('nama', { ascending: true });
-      const { data: a } = await supabase.from('absensi').select('*').order('tanggal', { ascending: false });
-      const { data: b } = await supabase.from('batas_mengajar').select('*').order('created_at', { ascending: false });
-      const { data: p } = await supabase.from('catatan_perilaku').select('*').order('created_at', { ascending: false });
-      const { data: n } = await supabase.from('nilai').select('*').order('created_at', { ascending: false });
-      const { data: bs } = await supabase.from('bank_soal').select('*').order('created_at', { ascending: false });
+      const { data: s, error: errS } = await supabase.from('santri').select('*').order('nama', { ascending: true });
+      const { data: a, error: errA } = await supabase.from('absensi').select('*').order('tanggal', { ascending: false });
+      const { data: b, error: errB } = await supabase.from('batas_mengajar').select('*').order('created_at', { ascending: false });
+      const { data: p, error: errP } = await supabase.from('catatan_perilaku').select('*').order('created_at', { ascending: false });
+      const { data: n, error: errN } = await supabase.from('nilai').select('*').order('created_at', { ascending: false });
+      const { data: bs, error: errBs } = await supabase.from('bank_soal').select('*').order('created_at', { ascending: false });
 
-      if (m) setMuridList(m);
-      if (a) setListAbsensi(a);
-      if (b) setListBatas(b);
-      if (p) setListPerilaku(p);
-      if (n) setListNilai(n);
-      if (bs) setListBankSoal(bs);
+      if (s && !errS) setMuridList(s);
+      if (a && !errA) setListAbsensi(a);
+      if (b && !errB) setListBatas(b);
+      if (p && !errP) setListPerilaku(p);
+      if (n && !errN) setListNilai(n);
+      if (bs && !errBs) setListBankSoal(bs);
     } catch (err) {
-      console.log("Offline mode aktif");
+      console.log("Offline mode atau kendala sinkronisasi aktif");
     } finally {
       setLoading(false);
     }
@@ -157,7 +103,7 @@ export default function App() {
     setLoading(true);
     if (authMode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-      if (error) alert("Gagal Login: Cek kembali email dan password Anda.");
+      if (error) alert("Gagal Login: Cek kembali email/password atau konfigurasi API Key Vercel Anda.");
     } else {
       const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
       if (error) alert("Gagal Daftar: " + error.message);
@@ -167,146 +113,111 @@ export default function App() {
   };
 
   const checkConnection = () => {
-    if (isOffline) {
-      alert("Internet mati! Data tersimpan di HP. Sinkronkan ke awan saat internet kembali menyala.");
+    if (isOffline || !SUPABASE_ANON_KEY) {
+      alert("Aplikasi berjalan lokal! Data tersimpan di HP. Pastikan Environment Variables VITE_SUPABASE_ANON_KEY sudah terpasang di Vercel agar tersimpan online.");
       return false;
     }
     return true;
   };
 
-  // --- KUMPULAN FUNGSI SIMPAN (MODERN - TANPA REFRESH) ---
-  const handleSimpanMurid = async (e) => {
+  const handleSimpanSantri = async (e) => {
     e.preventDefault();
-    if (!formMurid.nama || !formMurid.kelas) return alert("Nama dan Kelas wajib diisi!");
-    if (!checkConnection()) return;
+    if (!formSantri.nama || !formSantri.kelas) return alert("Nama dan Kelas wajib diisi!");
+    
+    const safeLocalId = Math.floor(Math.random() * 10000000);
+    const newSantri = { ...formSantri, id: safeLocalId, ustadz_email: user?.email };
+    setMuridList([...muridList, newSantri]);
+    setFormSantri({ nama: '', kelas: '', alamat: '', domisili: '' });
 
-    setLoading(true);
-    const { data, error } = await supabase.from('murid').insert([{ 
-      nama: formMurid.nama, 
-      kelas: formMurid.kelas, 
-      alamat: formMurid.alamat, 
-      domisili: formMurid.domisili, 
-      ustadz_email: user?.email 
-    }]).select();
-
-    if (error) {
-      alert("Gagal menyimpan murid: " + error.message);
-    } else if (data) {
-      setMuridList([...muridList, data[0]]);
-      setFormMurid({ nama: '', kelas: '', alamat: '', domisili: '' });
+    if (checkConnection()) {
+      setLoading(true);
+      await supabase.from('santri').insert([{ ...formSantri, ustadz_email: user?.email }]);
+      setLoading(false);
+      syncSemuaDataKeCloud();
     }
-    setLoading(false);
   };
 
-  const handleSimpanAbsen = async (muridId, status) => {
-    if (!checkConnection()) return;
+  const handleSimpanAbsen = async (santriId, status) => {
     const tanggalHariIni = new Date().toISOString().split('T')[0];
+    const safeLocalId = Math.floor(Math.random() * 10000000);
+    const absenBaru = { id: safeLocalId, santri_id: santriId, status, tanggal: tanggalHariIni, ustadz_email: user?.email };
     
-    setLoading(true);
-    const { data, error } = await supabase.from('absensi').insert([{ 
-      murid_id: muridId, 
-      status: status, 
-      tanggal: tanggalHariIni, 
-      ustadz_email: user?.email 
-    }]).select();
+    setListAbsensi(prev => [absenBaru, ...prev.filter(a => !(a.santri_id === santriId && a.tanggal === tanggalHariIni))]);
 
-    if (error) {
-      alert("Gagal menyimpan absen: " + error.message);
-    } else if (data) {
-      setListAbsensi(prev => [data[0], ...prev.filter(a => !(a.murid_id === muridId && a.tanggal === tanggalHariIni))]);
+    if (!isOffline && SUPABASE_ANON_KEY) {
+      setLoading(true);
+      await supabase.from('absensi').insert([{ santri_id: santriId, status, tanggal: tanggalHariIni, ustadz_email: user?.email }]);
+      setLoading(false);
+      syncSemuaDataKeCloud();
     }
-    setLoading(false);
   };
 
   const handleSimpanBatasAjar = async (e) => {
     e.preventDefault();
     if (!formBatas.fan || !formBatas.batas) return alert("Isi lengkap Fan & Batas Mengajar!");
-    if (!checkConnection()) return;
+    
+    const safeLocalId = Math.floor(Math.random() * 10000000);
+    const newBatas = { id: safeLocalId, fan: formBatas.fan, batas_akhir: formBatas.batas, created_at: new Date().toISOString(), ustadz_email: user?.email };
+    setListBatas([newBatas, ...listBatas]);
+    setFormBatas({ fan: '', batas: '' });
 
-    setLoading(true);
-    const { data, error } = await supabase.from('batas_mengajar').insert([{ 
-      fan: formBatas.fan, 
-      batas_akhir: formBatas.batas, 
-      ustadz_email: user?.email 
-    }]).select();
-
-    if (error) {
-      alert("Gagal menyimpan batas ajar: " + error.message);
-    } else if (data) {
-      setListBatas([data[0], ...listBatas]);
-      setFormBatas({ fan: '', batas: '' });
+    if (checkConnection()) {
+      setLoading(true);
+      await supabase.from('batas_mengajar').insert([{ fan: newBatas.fan, batas_akhir: newBatas.batas_akhir, ustadz_email: user?.email }]);
+      setLoading(false);
+      syncSemuaDataKeCloud();
     }
-    setLoading(false);
   };
 
   const handleSimpanPerilaku = async (e) => {
     e.preventDefault();
-    if (!formPerilaku.murid_id || !formPerilaku.catatan) return alert("Pilih murid dan tulis catatannya!");
-    if (!checkConnection()) return;
+    if (!formPerilaku.santri_id || !formPerilaku.catatan) return alert("Pilih murid dan tulis catatannya!");
+    
+    const safeLocalId = Math.floor(Math.random() * 10000000);
+    const newPrilaku = { id: safeLocalId, santri_id: parseInt(formPerilaku.santri_id), catatan: formPerilaku.catatan, created_at: new Date().toISOString() };
+    setListPerilaku([newPrilaku, ...listPerilaku]);
+    setFormPerilaku({ santri_id: '', catatan: '' });
 
-    setLoading(true);
-    const { data, error } = await supabase.from('catatan_perilaku').insert([{ 
-      murid_id: parseInt(formPerilaku.murid_id), 
-      catatan: formPerilaku.catatan, 
-      ustadz_email: user?.email 
-    }]).select();
-
-    if (error) {
-      alert("Gagal menyimpan catatan: " + error.message);
-    } else if (data) {
-      setListPerilaku([data[0], ...listPerilaku]);
-      setFormPerilaku({ murid_id: '', catatan: '' });
-      alert("Catatan perilaku berhasil disimpan!");
+    if (checkConnection()) {
+      setLoading(true);
+      await supabase.from('catatan_perilaku').insert([{ santri_id: newPrilaku.santri_id, catatan: newPrilaku.catatan, ustadz_email: user?.email }]);
+      setLoading(false);
+      syncSemuaDataKeCloud();
     }
-    setLoading(false);
   };
 
   const handleSimpanNilai = async (e) => {
     e.preventDefault();
-    if (!formNilai.murid_id || !formNilai.pelajaran || !formNilai.skor) return alert("Lengkapi data nilai!");
-    if (!checkConnection()) return;
+    if (!formNilai.santri_id || !formNilai.pelajaran || !formNilai.skor) return alert("Lengkapi data nilai!");
+    
+    const safeLocalId = Math.floor(Math.random() * 10000000);
+    const newNilai = { id: safeLocalId, santri_id: parseInt(formNilai.santri_id), jenis_ujian: formNilai.jenis_ujian, pelajaran: formNilai.pelajaran, skor: parseInt(formNilai.skor) };
+    setListNilai([newNilai, ...listNilai]);
+    setFormNilai({ santri_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
 
-    setLoading(true);
-    const { data, error } = await supabase.from('nilai').insert([{ 
-      murid_id: parseInt(formNilai.murid_id), 
-      jenis_ujian: formNilai.jenis_ujian, 
-      pelajaran: formNilai.pelajaran, 
-      skor: parseInt(formNilai.skor), 
-      ustadz_email: user?.email 
-    }]).select();
-
-    if (error) {
-      alert("Gagal menyimpan nilai: " + error.message);
-    } else if (data) {
-      setListNilai([data[0], ...listNilai]);
-      setFormNilai({ murid_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
-      alert("Skor nilai berhasil dicatat!");
+    if (checkConnection()) {
+      setLoading(true);
+      await supabase.from('nilai').insert([{ santri_id: newNilai.santri_id, jenis_ujian: newNilai.jenis_ujian, pelajaran: newNilai.pelajaran, skor: newNilai.skor, ustadz_email: user?.email }]);
+      setLoading(false);
+      syncSemuaDataKeCloud();
     }
-    setLoading(false);
   };
 
   const handleSimpanSoal = async (e) => {
     e.preventDefault();
     if (!formSoal.pelajaran || !formSoal.kelas || !formSoal.isi) return alert("Lengkapi formulir pembuatan soal!");
-    if (!checkConnection()) return;
+    
+    const safeLocalId = Math.floor(Math.random() * 10000000);
+    const newSoal = { id: safeLocalId, pelajaran: formSoal.pelajaran, kelas: formSoal.kelas, batasan: formSoal.batasan, isi_soal: formSoal.isi };
+    setListBankSoal([newSoal, ...listBankSoal]);
+    setFormSoal({ pelajaran: '', kelas: '', batasan: '', isi: '' });
 
-    setLoading(true);
-    const { data, error } = await supabase.from('bank_soal').insert([{ 
-      pelajaran: formSoal.pelajaran, 
-      kelas: formSoal.kelas, 
-      batasan: formSoal.batasan, 
-      isi_soal: formSoal.isi, 
-      ustadz_email: user?.email 
-    }]).select();
-
-    if (error) {
-      alert("Gagal menyimpan soal: " + error.message);
-    } else if (data) {
-      setListBankSoal([data[0], ...listBankSoal]);
-      setFormSoal({ pelajaran: '', kelas: '', batasan: '', isi: '' });
-      alert("Soal berhasil dimasukkan ke Bank Soal!");
+    if (checkConnection()) {
+      setLoading(true);
+      await supabase.from('bank_soal').insert([{ pelajaran: newSoal.pelajaran, kelas: newSoal.kelas, batasan: newSoal.batasan, isi_soal: newSoal.isi_soal, ustadz_email: user?.email }]);
+      setLoading(false);
+      syncSemuaDataKeCloud();
     }
-    setLoading(false);
   };
 
   if (!user) {
@@ -353,7 +264,7 @@ export default function App() {
       <header className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <i className="fa-solid fa-graduation-cap text-lg"></i>
-          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1 font-mono align-top">v3.5</span></h1>
+          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1 font-mono align-top">v3.0</span></h1>
         </div>
         <div className="flex items-center gap-3">
           {isOffline && <span className="text-[10px] bg-red-500 px-2 py-1 rounded font-bold uppercase tracking-wider animate-pulse">Offline</span>}
@@ -376,12 +287,12 @@ export default function App() {
                 <i className="fa-solid fa-database"></i> Input Data Base Murid
               </h3>
               <div className="space-y-2">
-                <input type="text" placeholder="Nama Lengkap Murid" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formMurid.nama} onChange={e => setFormMurid({...formMurid, nama: e.target.value})} />
-                <input type="text" placeholder="Kelas Madrasah (Ketik Bebas)" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formMurid.kelas} onChange={e => setFormMurid({...formMurid, kelas: e.target.value})} />
-                <input type="text" placeholder="Alamat Rumah" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formMurid.alamat} onChange={e => setFormMurid({...formMurid, alamat: e.target.value})} />
-                <input type="text" placeholder="Domisili Pondok / Kamar" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formMurid.domisili} onChange={e => setFormMurid({...formMurid, domisili: e.target.value})} />
+                <input type="text" placeholder="Nama Lengkap Santri" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formSantri.nama} onChange={e => setFormSantri({...formSantri, nama: e.target.value})} />
+                <input type="text" placeholder="Kelas Madrasah (Ketik Bebas)" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formSantri.kelas} onChange={e => setFormSantri({...formSantri, kelas: e.target.value})} />
+                <input type="text" placeholder="Alamat Rumah" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formSantri.alamat} onChange={e => setFormSantri({...formSantri, alamat: e.target.value})} />
+                <input type="text" placeholder="Domisili Pondok / Kamar" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formSantri.domisili} onChange={e => setFormSantri({...formSantri, domisili: e.target.value})} />
               </div>
-              <button onClick={handleSimpanMurid} disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow mt-2 hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-2">
+              <button onClick={handleSimpanSantri} disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow mt-2 hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-2">
                 <i className="fa-solid fa-floppy-disk"></i> Simpan Murid
               </button>
             </div>
@@ -401,15 +312,15 @@ export default function App() {
           </div>
         )}
 
-        {/* REVISI FITUR: MENU ABSEN MODERN SINKRONISASI HARI TANGGAL AKTIF */}
         {activeTab === 'absen' && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4 rounded-2xl shadow-md space-y-1">
-              <p className="text-[10px] uppercase font-extrabold tracking-widest opacity-75">Sesi Rekap Absensi Aktif</p>
-              <h3 className="text-base font-black tracking-wide">
+            {/* PANEL KETERANGAN HARI & TANGGAL */}
+            <div className="bg-white p-4 rounded-xl border shadow-sm text-center flex flex-col items-center justify-center">
+              <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Tanggal Mengabsen</span>
+              <h3 className="font-extrabold text-slate-800 text-sm mt-0.5 flex items-center gap-1.5">
+                <i className="fa-solid fa-calendar-day text-emerald-500"></i>
                 {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </h3>
-              <p className="text-[10px] opacity-90"><i className="fa-solid fa-circle-check"></i> Klik tombol status untuk menyimpan langsung ke profil murid.</p>
             </div>
 
             <div className="bg-white p-4 rounded-xl border flex items-center justify-between shadow-sm">
@@ -422,7 +333,7 @@ export default function App() {
 
             <div className="space-y-2">
               {muridList.filter(m => filterKelasAbsen === 'Semua' || m.kelas === filterKelasAbsen).map(m => {
-                const absenHariIni = listAbsensi.find(a => a.murid_id === m.id && a.tanggal === new Date().toISOString().split('T')[0]);
+                const absenHariIni = listAbsensi.find(a => a.santri_id === m.id && a.tanggal === new Date().toISOString().split('T')[0]);
                 return (
                   <div key={m.id} className="bg-white p-4 rounded-xl border flex items-center justify-between shadow-sm">
                     <div>
@@ -430,9 +341,9 @@ export default function App() {
                       <p className="text-[10px] text-slate-400 font-bold uppercase">{m.kelas}</p>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => handleSimpanAbsen(m.id, 'Hadir')} disabled={loading} className={`w-8 h-8 rounded-lg font-bold text-xs transition shadow-sm ${absenHariIni?.status === 'Hadir' ? 'bg-emerald-600 text-white scale-105 ring-2 ring-emerald-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'} disabled:opacity-50`}>H</button>
-                      <button onClick={() => handleSimpanAbsen(m.id, 'Izin')} disabled={loading} className={`w-8 h-8 rounded-lg font-bold text-xs transition shadow-sm ${absenHariIni?.status === 'Izin' ? 'bg-amber-500 text-white scale-105 ring-2 ring-amber-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'} disabled:opacity-50`}>I</button>
-                      <button onClick={() => handleSimpanAbsen(m.id, 'Alfa')} disabled={loading} className={`w-8 h-8 rounded-lg font-bold text-xs transition shadow-sm ${absenHariIni?.status === 'Alfa' ? 'bg-red-500 text-white scale-105 ring-2 ring-red-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'} disabled:opacity-50`}>A</button>
+                      <button onClick={() => handleSimpanAbsen(m.id, 'Hadir')} className={`w-8 h-8 rounded-lg font-bold text-xs transition shadow-sm ${absenHariIni?.status === 'Hadir' ? 'bg-emerald-600 text-white scale-105 ring-2 ring-emerald-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>H</button>
+                      <button onClick={() => handleSimpanAbsen(m.id, 'Izin')} className={`w-8 h-8 rounded-lg font-bold text-xs transition shadow-sm ${absenHariIni?.status === 'Izin' ? 'bg-amber-500 text-white scale-105 ring-2 ring-amber-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>I</button>
+                      <button onClick={() => handleSimpanAbsen(m.id, 'Alfa')} className={`w-8 h-8 rounded-lg font-bold text-xs transition shadow-sm ${absenHariIni?.status === 'Alfa' ? 'bg-red-500 text-white scale-105 ring-2 ring-red-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>A</button>
                     </div>
                   </div>
                 );
@@ -447,7 +358,7 @@ export default function App() {
               <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2"><i className="fa-solid fa-book-open"></i> Catat Batas Mengajar</h3>
               <input type="text" placeholder="Nama Fan Pelajaran / Kitab" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500" value={formBatas.fan} onChange={e => setFormBatas({...formBatas, fan: e.target.value})} />
               <input type="text" placeholder="Batas Akhir (Bab/Hal/Ayat)" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500" value={formBatas.batas} onChange={e => setFormBatas({...formBatas, batas: e.target.value})} />
-              <button onClick={handleSimpanBatasAjar} disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow flex items-center justify-center gap-2 disabled:opacity-50"><i className="fa-solid fa-floppy-disk"></i> Simpan Batas Ajar</button>
+              <button onClick={handleSimpanBatasAjar} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow flex items-center justify-center gap-2"><i className="fa-solid fa-floppy-disk"></i> Simpan Batas Ajar</button>
             </div>
 
             <div className="space-y-2">
@@ -469,12 +380,12 @@ export default function App() {
           <div className="space-y-4">
             <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
               <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2"><i className="fa-solid fa-star-half-stroke"></i> Catatan Perilaku Santri</h3>
-              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formPerilaku.murid_id} onChange={e => setFormPerilaku({...formPerilaku, murid_id: e.target.value})}>
+              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formPerilaku.santri_id} onChange={e => setFormPerilaku({...formPerilaku, santri_id: e.target.value})}>
                 <option value="">-- Pilih Nama Murid --</option>
                 {muridList.map(m => <option key={m.id} value={m.id}>{m.nama} ({m.kelas})</option>)}
               </select>
               <textarea placeholder="Tulis catatan perkembangan atau perilaku santri di sini..." className="w-full border rounded-xl p-3 text-sm h-28 focus:ring-2 ring-emerald-500 outline-none resize-none" value={formPerilaku.catatan} onChange={e => setFormPerilaku({...formPerilaku, catatan: e.target.value})}></textarea>
-              <button onClick={handleSimpanPerilaku} disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow flex items-center justify-center gap-2 disabled:opacity-50"><i className="fa-solid fa-floppy-disk"></i> Simpan Catatan</button>
+              <button onClick={handleSimpanPerilaku} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow flex items-center justify-center gap-2"><i className="fa-solid fa-floppy-disk"></i> Simpan Catatan</button>
             </div>
           </div>
         )}
@@ -483,7 +394,7 @@ export default function App() {
           <div className="space-y-4">
             <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
               <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2"><i className="fa-solid fa-file-signature"></i> Pencatatan Skor Nilai</h3>
-              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formNilai.murid_id} onChange={e => setFormNilai({...formNilai, murid_id: e.target.value})}>
+              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formNilai.santri_id} onChange={e => setFormNilai({...formNilai, santri_id: e.target.value})}>
                 <option value="">-- Pilih Nama Murid --</option>
                 {muridList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
               </select>
@@ -497,7 +408,7 @@ export default function App() {
               <input type="text" placeholder="Mata Pelajaran / Fan" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formNilai.pelajaran} onChange={e => setFormNilai({...formNilai, pelajaran: e.target.value})} />
               <input type="number" placeholder="Skor Nilai (Angka 0-100)" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formNilai.skor} onChange={e => setFormNilai({...formNilai, skor: e.target.value})} />
               
-              <button onClick={handleSimpanNilai} disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow mt-1 flex items-center justify-center gap-2 disabled:opacity-50"><i className="fa-solid fa-floppy-disk"></i> Simpan Nilai</button>
+              <button onClick={handleSimpanNilai} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow mt-1 flex items-center justify-center gap-2"><i className="fa-solid fa-floppy-disk"></i> Simpan Nilai</button>
             </div>
           </div>
         )}
@@ -512,7 +423,7 @@ export default function App() {
               </div>
               <input type="text" placeholder="Batasan Materi Bab / Ruang Lingkup" className="w-full border rounded-xl p-3 text-sm focus:ring-2 ring-emerald-500 outline-none" value={formSoal.batasan} onChange={e => setFormSoal({...formSoal, batasan: e.target.value})} />
               <textarea placeholder="Tulis butir pertanyaan soal ujian secara urut..." className="w-full border rounded-xl p-4 text-sm h-36 font-mono bg-slate-50/50 focus:ring-2 ring-emerald-500 outline-none resize-none" value={formSoal.isi} onChange={e => setFormSoal({...formSoal, isi: e.target.value})}></textarea>
-              <button onClick={handleSimpanSoal} disabled={loading} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow flex items-center justify-center gap-2 disabled:opacity-50"><i className="fa-solid fa-file-arrow-up"></i> Masukkan Bank Soal</button>
+              <button onClick={handleSimpanSoal} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow flex items-center justify-center gap-2"><i className="fa-solid fa-file-arrow-up"></i> Masukkan Bank Soal</button>
             </div>
 
             <div className="space-y-2">
@@ -533,20 +444,6 @@ export default function App() {
 
         {activeTab === 'profil' && (
           <div className="space-y-4">
-            
-            {/* FITUR: REVISI INTEGRASI FITUR UTAMA INSTAL APLIKASI DI MENU UTAMA PROFIL */}
-            {showInstallBtn && (
-              <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white p-4 rounded-2xl shadow border border-amber-300 flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-black tracking-wide"><i className="fa-solid fa-mobile-screen-button mr-1"></i> Jadikan Aplikasi HP</h4>
-                  <p className="text-[10px] opacity-90 mt-0.5">Buka Buku Ustaz langsung dari layar utama HP Anda.</p>
-                </div>
-                <button onClick={handleInstallAppClick} className="bg-white text-orange-700 font-extrabold text-[11px] px-3 py-2 rounded-xl shadow hover:bg-slate-50 transition shrink-0 ml-2">
-                  Pasang Sekarang
-                </button>
-              </div>
-            )}
-
             {viewProfilStage === 'kelas' && (
               <div className="space-y-3">
                 <h3 className="font-bold text-slate-800 text-sm px-1">Pilih Kelas Terlebih Dahulu:</h3>
@@ -600,16 +497,16 @@ export default function App() {
                 <div className="bg-white p-4 rounded-2xl border shadow-sm">
                   <h4 className="text-xs font-bold text-slate-500 border-b pb-2 mb-2 flex items-center gap-1.5"><i className="fa-solid fa-calendar-check text-emerald-600"></i> Rekap Absensi</h4>
                   <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                    <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Hadir</span><span className="font-black text-emerald-700 text-lg">{listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Hadir').length}</span></div>
-                    <div className="bg-amber-50 p-2 rounded-xl border border-amber-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Izin</span><span className="font-black text-amber-700 text-lg">{listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Izin').length}</span></div>
-                    <div className="bg-red-50 p-2 rounded-xl border border-red-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Alfa</span><span className="font-black text-red-700 text-lg">{listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Alfa').length}</span></div>
+                    <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Hadir</span><span className="font-black text-emerald-700 text-lg">{listAbsensi.filter(a => a.santri_id === selectedMuridProfil.id && a.status === 'Hadir').length}</span></div>
+                    <div className="bg-amber-50 p-2 rounded-xl border border-amber-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Izin</span><span className="font-black text-amber-700 text-lg">{listAbsensi.filter(a => a.santri_id === selectedMuridProfil.id && a.status === 'Izin').length}</span></div>
+                    <div className="bg-red-50 p-2 rounded-xl border border-red-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Alfa</span><span className="font-black text-red-700 text-lg">{listAbsensi.filter(a => a.santri_id === selectedMuridProfil.id && a.status === 'Alfa').length}</span></div>
                   </div>
                 </div>
 
                 <div className="bg-white p-4 rounded-2xl border shadow-sm">
                   <h4 className="text-xs font-bold text-slate-500 border-b pb-2 mb-2 flex items-center gap-1.5"><i className="fa-solid fa-chart-line text-emerald-600"></i> Riwayat Nilai</h4>
                   <div className="space-y-2 max-h-40 overflow-y-auto pt-1 pr-1">
-                    {listNilai.filter(n => n.murid_id === selectedMuridProfil.id).map(n => (
+                    {listNilai.filter(n => n.santri_id === selectedMuridProfil.id).map(n => (
                       <div key={n.id} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100 last:border-0">
                         <div>
                           <span className="font-bold text-slate-700 block">{n.pelajaran}</span>
@@ -618,20 +515,20 @@ export default function App() {
                         <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 font-black px-2.5 py-1 rounded-lg text-sm">{n.skor}</span>
                       </div>
                     ))}
-                    {listNilai.filter(n => n.murid_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada nilai terinput.</p>}
+                    {listNilai.filter(n => n.santri_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada nilai terinput.</p>}
                   </div>
                 </div>
 
                 <div className="bg-white p-4 rounded-2xl border shadow-sm">
                   <h4 className="text-xs font-bold text-slate-500 border-b pb-2 mb-2 flex items-center gap-1.5"><i className="fa-solid fa-comment-dots text-emerald-600"></i> Catatan Perilaku</h4>
                   <div className="space-y-2 pt-1 pr-1">
-                    {listPerilaku.filter(p => p.murid_id === selectedMuridProfil.id).map(p => (
+                    {listPerilaku.filter(p => p.santri_id === selectedMuridProfil.id).map(p => (
                       <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs text-slate-600 italic">
                         "{p.catatan}"
                         <span className="text-[9px] block text-slate-400 font-mono not-italic mt-2 text-right border-t border-slate-200 pt-1">{new Date(p.created_at).toLocaleDateString('id-ID')}</span>
                       </div>
                     ))}
-                    {listPerilaku.filter(p => p.murid_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada catatan.</p>}
+                    {listPerilaku.filter(p => p.santri_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada catatan.</p>}
                   </div>
                 </div>
               </div>
