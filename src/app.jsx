@@ -15,7 +15,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // State Data
+  // State PWA / Instal Aplikasi
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  // State Data (Menggunakan Murid)
   const [muridList, setMuridList] = useState([]);
   const [listAbsensi, setListAbsensi] = useState([]);
   const [listBatas, setListBatas] = useState([]);
@@ -31,10 +35,58 @@ export default function App() {
   // State Form
   const [formMurid, setFormMurid] = useState({ nama: '', kelas: '', alamat: '', domisili: '' });
   const [formBatas, setFormBatas] = useState({ fan: '', batas: '' });
-  const [formPerilaku, setFormPerilaku] = useState({ santri_id: '', catatan: '' });
-  const [formNilai, setFormNilai] = useState({ santri_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
+  const [formPerilaku, setFormPerilaku] = useState({ murid_id: '', catatan: '' });
+  const [formNilai, setFormNilai] = useState({ murid_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
   const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: '', batasan: '', isi: '' });
   const [filterKelasAbsen, setFilterKelasAbsen] = useState('Semua');
+
+  // 1. SISTEM DETEKSI TOMBOL KEMBALI HP (BACK BUTTON HANDLING)
+  useEffect(() => {
+    const handlePopState = (event) => {
+      if (activeTab === 'profil') {
+        if (viewProfilStage === 'detail') {
+          window.history.pushState(null, null, window.location.pathname);
+          setViewProfilStage('murid');
+        } else if (viewProfilStage === 'murid') {
+          window.history.pushState(null, null, window.location.pathname);
+          setViewProfilStage('kelas');
+        } else {
+          setActiveTab('database');
+        }
+      } else if (activeTab !== 'database') {
+        window.history.pushState(null, null, window.location.pathname);
+        setActiveTab('database');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.history.pushState(null, null, window.location.pathname);
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeTab, viewProfilStage]);
+
+  // 2. SISTEM DETEKSI FITUR INSTAL APLIKASI (PWA PROMPT)
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallAppClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      console.log('User menginstal aplikasi Buku Ustaz');
+    }
+    setDeferredPrompt(null);
+    setShowInstallBtn(false);
+  };
 
   // Load awal & Deteksi Online/Offline
   useEffect(() => {
@@ -55,12 +107,10 @@ export default function App() {
     };
   }, []);
 
-  // Tarik data dari Supabase saat User Login dan Online
   useEffect(() => {
     if (user && !isOffline) syncSemuaDataKeCloud();
   }, [user, isOffline]);
 
-  // Simpan data ke memori HP (Local Storage) saat ada perubahan
   useEffect(() => {
     if (muridList.length > 0) localStorage.setItem('off_murid', JSON.stringify(muridList));
     if (listAbsensi.length > 0) localStorage.setItem('off_absen', JSON.stringify(listAbsensi));
@@ -82,7 +132,6 @@ export default function App() {
   const syncSemuaDataKeCloud = async () => {
     setLoading(true);
     try {
-      // Mengambil dari tabel 'murid' bukan 'santri'
       const { data: m } = await supabase.from('murid').select('*').order('nama', { ascending: true });
       const { data: a } = await supabase.from('absensi').select('*').order('tanggal', { ascending: false });
       const { data: b } = await supabase.from('batas_mengajar').select('*').order('created_at', { ascending: false });
@@ -125,8 +174,7 @@ export default function App() {
     return true;
   };
 
-  // --- KUMPULAN FUNGSI SIMPAN (CARA HALUS TANPA RELOAD) ---
-
+  // --- KUMPULAN FUNGSI SIMPAN (MODERN - TANPA REFRESH) ---
   const handleSimpanMurid = async (e) => {
     e.preventDefault();
     if (!formMurid.nama || !formMurid.kelas) return alert("Nama dan Kelas wajib diisi!");
@@ -156,7 +204,7 @@ export default function App() {
     
     setLoading(true);
     const { data, error } = await supabase.from('absensi').insert([{ 
-      santri_id: muridId, 
+      murid_id: muridId, 
       status: status, 
       tanggal: tanggalHariIni, 
       ustadz_email: user?.email 
@@ -165,7 +213,7 @@ export default function App() {
     if (error) {
       alert("Gagal menyimpan absen: " + error.message);
     } else if (data) {
-      setListAbsensi(prev => [data[0], ...prev.filter(a => !(a.santri_id === muridId && a.tanggal === tanggalHariIni))]);
+      setListAbsensi(prev => [data[0], ...prev.filter(a => !(a.murid_id === muridId && a.tanggal === tanggalHariIni))]);
     }
     setLoading(false);
   };
@@ -193,12 +241,12 @@ export default function App() {
 
   const handleSimpanPerilaku = async (e) => {
     e.preventDefault();
-    if (!formPerilaku.santri_id || !formPerilaku.catatan) return alert("Pilih murid dan tulis catatannya!");
+    if (!formPerilaku.murid_id || !formPerilaku.catatan) return alert("Pilih murid dan tulis catatannya!");
     if (!checkConnection()) return;
 
     setLoading(true);
     const { data, error } = await supabase.from('catatan_perilaku').insert([{ 
-      santri_id: parseInt(formPerilaku.santri_id), 
+      murid_id: parseInt(formPerilaku.murid_id), 
       catatan: formPerilaku.catatan, 
       ustadz_email: user?.email 
     }]).select();
@@ -207,19 +255,20 @@ export default function App() {
       alert("Gagal menyimpan catatan: " + error.message);
     } else if (data) {
       setListPerilaku([data[0], ...listPerilaku]);
-      setFormPerilaku({ santri_id: '', catatan: '' });
+      setFormPerilaku({ murid_id: '', catatan: '' });
+      alert("Catatan perilaku berhasil disimpan!");
     }
     setLoading(false);
   };
 
   const handleSimpanNilai = async (e) => {
     e.preventDefault();
-    if (!formNilai.santri_id || !formNilai.pelajaran || !formNilai.skor) return alert("Lengkapi data nilai!");
+    if (!formNilai.murid_id || !formNilai.pelajaran || !formNilai.skor) return alert("Lengkapi data nilai!");
     if (!checkConnection()) return;
 
     setLoading(true);
     const { data, error } = await supabase.from('nilai').insert([{ 
-      santri_id: parseInt(formNilai.santri_id), 
+      murid_id: parseInt(formNilai.murid_id), 
       jenis_ujian: formNilai.jenis_ujian, 
       pelajaran: formNilai.pelajaran, 
       skor: parseInt(formNilai.skor), 
@@ -230,7 +279,8 @@ export default function App() {
       alert("Gagal menyimpan nilai: " + error.message);
     } else if (data) {
       setListNilai([data[0], ...listNilai]);
-      setFormNilai({ santri_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
+      setFormNilai({ murid_id: '', jenis_ujian: 'Ulangan', pelajaran: '', skor: '' });
+      alert("Skor nilai berhasil dicatat!");
     }
     setLoading(false);
   };
@@ -254,11 +304,11 @@ export default function App() {
     } else if (data) {
       setListBankSoal([data[0], ...listBankSoal]);
       setFormSoal({ pelajaran: '', kelas: '', batasan: '', isi: '' });
+      alert("Soal berhasil dimasukkan ke Bank Soal!");
     }
     setLoading(false);
   };
 
-  // --- TAMPILAN LOGIN ---
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center px-4 font-sans max-w-md mx-auto">
@@ -291,7 +341,6 @@ export default function App() {
     );
   }
 
-  // Persiapan Variabel UI
   const listKelasUnik = [...new Set(muridList.map(m => m.kelas))];
   const groupBankSoal = listBankSoal.reduce((acc, item) => {
     if (!acc[item.pelajaran]) acc[item.pelajaran] = [];
@@ -299,13 +348,12 @@ export default function App() {
     return acc;
   }, {});
 
-  // --- TAMPILAN UTAMA APLIKASI ---
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans max-w-md mx-auto shadow-2xl border-x border-slate-200 overflow-hidden pb-36 relative">
       <header className="bg-emerald-600 text-white px-5 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
         <div className="flex items-center gap-2">
           <i className="fa-solid fa-graduation-cap text-lg"></i>
-          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1 font-mono align-top">v3.0</span></h1>
+          <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1 font-mono align-top">v3.5</span></h1>
         </div>
         <div className="flex items-center gap-3">
           {isOffline && <span className="text-[10px] bg-red-500 px-2 py-1 rounded font-bold uppercase tracking-wider animate-pulse">Offline</span>}
@@ -353,8 +401,17 @@ export default function App() {
           </div>
         )}
 
+        {/* REVISI FITUR: MENU ABSEN MODERN SINKRONISASI HARI TANGGAL AKTIF */}
         {activeTab === 'absen' && (
           <div className="space-y-4">
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-600 text-white p-4 rounded-2xl shadow-md space-y-1">
+              <p className="text-[10px] uppercase font-extrabold tracking-widest opacity-75">Sesi Rekap Absensi Aktif</p>
+              <h3 className="text-base font-black tracking-wide">
+                {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              </h3>
+              <p className="text-[10px] opacity-90"><i className="fa-solid fa-circle-check"></i> Klik tombol status untuk menyimpan langsung ke profil murid.</p>
+            </div>
+
             <div className="bg-white p-4 rounded-xl border flex items-center justify-between shadow-sm">
               <label className="text-xs font-bold text-slate-500 flex items-center gap-1.5"><i className="fa-solid fa-filter text-emerald-600"></i> Filter Kelas:</label>
               <select className="border border-slate-300 p-1.5 rounded-lg text-xs font-bold bg-slate-50 outline-none text-emerald-700" value={filterKelasAbsen} onChange={e => setFilterKelasAbsen(e.target.value)}>
@@ -365,7 +422,7 @@ export default function App() {
 
             <div className="space-y-2">
               {muridList.filter(m => filterKelasAbsen === 'Semua' || m.kelas === filterKelasAbsen).map(m => {
-                const absenHariIni = listAbsensi.find(a => a.santri_id === m.id && a.tanggal === new Date().toISOString().split('T')[0]);
+                const absenHariIni = listAbsensi.find(a => a.murid_id === m.id && a.tanggal === new Date().toISOString().split('T')[0]);
                 return (
                   <div key={m.id} className="bg-white p-4 rounded-xl border flex items-center justify-between shadow-sm">
                     <div>
@@ -412,7 +469,7 @@ export default function App() {
           <div className="space-y-4">
             <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
               <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2"><i className="fa-solid fa-star-half-stroke"></i> Catatan Perilaku Santri</h3>
-              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formPerilaku.santri_id} onChange={e => setFormPerilaku({...formPerilaku, santri_id: e.target.value})}>
+              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formPerilaku.murid_id} onChange={e => setFormPerilaku({...formPerilaku, murid_id: e.target.value})}>
                 <option value="">-- Pilih Nama Murid --</option>
                 {muridList.map(m => <option key={m.id} value={m.id}>{m.nama} ({m.kelas})</option>)}
               </select>
@@ -426,7 +483,7 @@ export default function App() {
           <div className="space-y-4">
             <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
               <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2"><i className="fa-solid fa-file-signature"></i> Pencatatan Skor Nilai</h3>
-              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formNilai.santri_id} onChange={e => setFormNilai({...formNilai, santri_id: e.target.value})}>
+              <select className="w-full border rounded-xl p-3 text-sm bg-white outline-none focus:ring-2 ring-emerald-500" value={formNilai.murid_id} onChange={e => setFormNilai({...formNilai, murid_id: e.target.value})}>
                 <option value="">-- Pilih Nama Murid --</option>
                 {muridList.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
               </select>
@@ -476,6 +533,20 @@ export default function App() {
 
         {activeTab === 'profil' && (
           <div className="space-y-4">
+            
+            {/* FITUR: REVISI INTEGRASI FITUR UTAMA INSTAL APLIKASI DI MENU UTAMA PROFIL */}
+            {showInstallBtn && (
+              <div className="bg-gradient-to-r from-amber-500 to-orange-600 text-white p-4 rounded-2xl shadow border border-amber-300 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black tracking-wide"><i className="fa-solid fa-mobile-screen-button mr-1"></i> Jadikan Aplikasi HP</h4>
+                  <p className="text-[10px] opacity-90 mt-0.5">Buka Buku Ustaz langsung dari layar utama HP Anda.</p>
+                </div>
+                <button onClick={handleInstallAppClick} className="bg-white text-orange-700 font-extrabold text-[11px] px-3 py-2 rounded-xl shadow hover:bg-slate-50 transition shrink-0 ml-2">
+                  Pasang Sekarang
+                </button>
+              </div>
+            )}
+
             {viewProfilStage === 'kelas' && (
               <div className="space-y-3">
                 <h3 className="font-bold text-slate-800 text-sm px-1">Pilih Kelas Terlebih Dahulu:</h3>
@@ -529,16 +600,16 @@ export default function App() {
                 <div className="bg-white p-4 rounded-2xl border shadow-sm">
                   <h4 className="text-xs font-bold text-slate-500 border-b pb-2 mb-2 flex items-center gap-1.5"><i className="fa-solid fa-calendar-check text-emerald-600"></i> Rekap Absensi</h4>
                   <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                    <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Hadir</span><span className="font-black text-emerald-700 text-lg">{listAbsensi.filter(a => a.santri_id === selectedMuridProfil.id && a.status === 'Hadir').length}</span></div>
-                    <div className="bg-amber-50 p-2 rounded-xl border border-amber-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Izin</span><span className="font-black text-amber-700 text-lg">{listAbsensi.filter(a => a.santri_id === selectedMuridProfil.id && a.status === 'Izin').length}</span></div>
-                    <div className="bg-red-50 p-2 rounded-xl border border-red-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Alfa</span><span className="font-black text-red-700 text-lg">{listAbsensi.filter(a => a.santri_id === selectedMuridProfil.id && a.status === 'Alfa').length}</span></div>
+                    <div className="bg-emerald-50 p-2 rounded-xl border border-emerald-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Hadir</span><span className="font-black text-emerald-700 text-lg">{listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Hadir').length}</span></div>
+                    <div className="bg-amber-50 p-2 rounded-xl border border-amber-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Izin</span><span className="font-black text-amber-700 text-lg">{listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Izin').length}</span></div>
+                    <div className="bg-red-50 p-2 rounded-xl border border-red-100"><span className="text-[10px] block text-slate-500 font-bold uppercase">Alfa</span><span className="font-black text-red-700 text-lg">{listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Alfa').length}</span></div>
                   </div>
                 </div>
 
                 <div className="bg-white p-4 rounded-2xl border shadow-sm">
                   <h4 className="text-xs font-bold text-slate-500 border-b pb-2 mb-2 flex items-center gap-1.5"><i className="fa-solid fa-chart-line text-emerald-600"></i> Riwayat Nilai</h4>
                   <div className="space-y-2 max-h-40 overflow-y-auto pt-1 pr-1">
-                    {listNilai.filter(n => n.santri_id === selectedMuridProfil.id).map(n => (
+                    {listNilai.filter(n => n.murid_id === selectedMuridProfil.id).map(n => (
                       <div key={n.id} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-100 last:border-0">
                         <div>
                           <span className="font-bold text-slate-700 block">{n.pelajaran}</span>
@@ -547,20 +618,20 @@ export default function App() {
                         <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 font-black px-2.5 py-1 rounded-lg text-sm">{n.skor}</span>
                       </div>
                     ))}
-                    {listNilai.filter(n => n.santri_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada nilai terinput.</p>}
+                    {listNilai.filter(n => n.murid_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada nilai terinput.</p>}
                   </div>
                 </div>
 
                 <div className="bg-white p-4 rounded-2xl border shadow-sm">
                   <h4 className="text-xs font-bold text-slate-500 border-b pb-2 mb-2 flex items-center gap-1.5"><i className="fa-solid fa-comment-dots text-emerald-600"></i> Catatan Perilaku</h4>
                   <div className="space-y-2 pt-1 pr-1">
-                    {listPerilaku.filter(p => p.santri_id === selectedMuridProfil.id).map(p => (
+                    {listPerilaku.filter(p => p.murid_id === selectedMuridProfil.id).map(p => (
                       <div key={p.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs text-slate-600 italic">
                         "{p.catatan}"
                         <span className="text-[9px] block text-slate-400 font-mono not-italic mt-2 text-right border-t border-slate-200 pt-1">{new Date(p.created_at).toLocaleDateString('id-ID')}</span>
                       </div>
                     ))}
-                    {listPerilaku.filter(p => p.santri_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada catatan.</p>}
+                    {listPerilaku.filter(p => p.murid_id === selectedMuridProfil.id).length === 0 && <p className="text-[11px] text-slate-400 text-center py-2">Belum ada catatan.</p>}
                   </div>
                 </div>
               </div>
