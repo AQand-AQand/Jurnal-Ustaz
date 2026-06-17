@@ -2,17 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Mencegah highlight biru saat tombol ditekan di HP */
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
+/* CSS Tambahan agar aplikasi terasa seperti Native App di HP */
 body {
-  background-color: #f8fafc;
-  font-family: system-ui, -apple-system, sans-serif;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Menghilangkan kedipan biru saat tombol ditekan di layar sentuh HP */
+  -webkit-tap-highlight-color: transparent; 
 }
 
-/* Memastikan navigasi bawah tidak tertutup oleh area aman layar HP modern */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
+/* Menyembunyikan scrollbar agar tampilan lebih bersih seperti aplikasi */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
 }
