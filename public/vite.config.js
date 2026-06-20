@@ -7,11 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon-192.png'],
+      includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Buku Ustaz PWA',
+        name: 'Buku Ustaz',
         short_name: 'BukuUstaz',
-        description: 'Aplikasi catatan dan absensi untuk ustaz (Offline-First)',
+        description: 'Aplikasi catatan dan absensi untuk ustaz',
         theme_color: '#059669',
         background_color: '#f1f5f9',
         display: 'standalone',
@@ -23,7 +23,7 @@ export default defineConfig({
             purpose: 'any maskable'
           },
           {
-            src: '/icon-192.png',
+            src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
