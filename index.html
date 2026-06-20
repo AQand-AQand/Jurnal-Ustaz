@@ -2,7 +2,7 @@
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
     <link rel="manifest" href="/manifest.json" />
@@ -20,9 +20,9 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').then((registration) => {
-            console.log('Service Worker terdaftar dengan sukses:', registration.scope);
+            console.log('Service Worker sukses:', registration.scope);
           }).catch((err) => {
-            console.log('Pendaftaran Service Worker gagal:', err);
+            console.log('Service Worker gagal:', err);
           });
         });
       }
