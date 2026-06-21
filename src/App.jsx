@@ -35,6 +35,7 @@ export default function App() {
   const [formSoal, setFormSoal] = useState({ pelajaran: '', kelas: '', batasan: '', isi: '' });
   
   const [filterKelasAbsen, setFilterKelasAbsen] = useState('Semua');
+  const [kelasSikap, setKelasSikap] = useState('Semua'); // State baru untuk filter kelas di tab Sikap
 
   // State Baru untuk Alur Nilai Individu
   const [nilaiKelas, setNilaiKelas] = useState('');
@@ -310,7 +311,7 @@ export default function App() {
           <i className="fa-solid fa-graduation-cap text-lg"></i>
           <h1 className="text-xl font-bold tracking-tight">Buku Ustaz <span className="text-[10px] bg-emerald-800 px-2 py-0.5 rounded-full ml-1 font-mono align-top">v4.1</span></h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {deferredPrompt && (
             <button onClick={handleInstallPWA} className="text-[10px] bg-white text-emerald-700 px-2 py-1 rounded font-bold uppercase tracking-wider shadow-sm hover:bg-slate-50">
               <i className="fa-solid fa-download mr-1"></i> Install
@@ -318,6 +319,10 @@ export default function App() {
           )}
           {isOffline && <span className="text-[10px] bg-red-500 px-2 py-1 rounded font-bold uppercase tracking-wider animate-pulse">Offline</span>}
           {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
+          
+          <button onClick={() => { setActiveTab('profil'); setViewProfilStage('kelas'); setSelectedMuridProfil(null); }} className="text-white hover:bg-emerald-500 bg-emerald-700 w-8 h-8 rounded-full flex items-center justify-center transition" title="Profil & Rekap Murid">
+            <i className="fa-solid fa-user text-sm"></i>
+          </button>
           <button onClick={() => syncSemuaDataKeCloud()} className="text-white hover:bg-emerald-500 bg-emerald-700 w-8 h-8 rounded-full flex items-center justify-center transition" title="Sinkron Cloud">
             <i className="fa-solid fa-cloud-arrow-up text-sm"></i>
           </button>
@@ -405,20 +410,27 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 4: PERILAKU */}
+        {/* TAB 4: PERILAKU / SIKAP */}
         {activeTab === 'perilaku' && (
           <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
              <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2"><i className="fa-solid fa-star-half-stroke"></i> Catatan Perilaku</h3>
-              <select className="w-full border rounded-xl p-3 text-sm outline-none focus:ring-2 ring-emerald-500" value={formPerilaku.murid_id} onChange={e => setFormPerilaku({...formPerilaku, murid_id: e.target.value})}>
-                <option value="">-- Pilih Nama Murid --</option>
-                {muridList.map(m => <option key={m.id} value={m.id}>{m.nama} ({m.kelas})</option>)}
+              
+              <select className="w-full border rounded-xl p-3 text-sm outline-none focus:ring-2 ring-emerald-500" value={kelasSikap} onChange={e => { setKelasSikap(e.target.value); setFormPerilaku({...formPerilaku, murid_id: ''}); }}>
+                <option value="Semua">-- Filter Semua Kelas --</option>
+                {listKelasUnik.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
+
+              <select className="w-full border rounded-xl p-3 text-sm outline-none focus:ring-2 ring-emerald-500 disabled:opacity-50" value={formPerilaku.murid_id} onChange={e => setFormPerilaku({...formPerilaku, murid_id: e.target.value})} disabled={kelasSikap !== 'Semua' && muridList.filter(m => m.kelas === kelasSikap).length === 0}>
+                <option value="">-- Pilih Nama Murid --</option>
+                {muridList.filter(m => kelasSikap === 'Semua' || m.kelas === kelasSikap).map(m => <option key={m.id} value={m.id}>{m.nama} ({m.kelas})</option>)}
+              </select>
+              
               <textarea placeholder="Tulis catatan di sini..." className="w-full border rounded-xl p-3 text-sm h-28 focus:ring-2 ring-emerald-500 outline-none resize-none" value={formPerilaku.catatan} onChange={e => setFormPerilaku({...formPerilaku, catatan: e.target.value})}></textarea>
-              <button onClick={handleSimpanPerilaku} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow"><i className="fa-solid fa-floppy-disk"></i> Simpan</button>
+              <button onClick={handleSimpanPerilaku} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow"><i className="fa-solid fa-floppy-disk"></i> Simpan Sikap</button>
           </div>
         )}
 
-        {/* TAB 5: NILAI (REVISI SESUAI PERMINTAAN) */}
+        {/* TAB 5: NILAI */}
         {activeTab === 'nilai' && (
           <div className="space-y-4">
             
@@ -485,7 +497,7 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6 & 7 Tetap Dipertahankan (Saya tidak tampilkan penuh agar tidak memakan ruang, fungsinya tidak saya ubah) */}
+        {/* TAB 6: SOAL */}
         {activeTab === 'soal' && (
           <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
             <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600"><i className="fa-solid fa-folder-open"></i> Bank Soal</h3>
@@ -496,10 +508,85 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB PROFIL & REKAP KESELURUHAN (Akses lewat tombol kanan atas) */}
         {activeTab === 'profil' && (
-           <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
-              <p className="text-sm text-center text-slate-500">Silakan gunakan tab Murid untuk melihat data santri secara lebih rinci.</p>
-           </div>
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-4">
+               <h3 className="font-bold text-slate-800 text-sm border-b pb-2 text-emerald-600 flex items-center gap-2">
+                 <i className="fa-solid fa-users-viewfinder"></i> Rekapitulasi Data Murid
+               </h3>
+               
+               {/* View Profil: Pilih Kelas */}
+               {viewProfilStage === 'kelas' && (
+                 <div className="grid grid-cols-2 gap-3">
+                   {listKelasUnik.map(k => (
+                     <button key={k} onClick={() => { setSelectedKelasProfil(k); setViewProfilStage('murid'); }} className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm hover:border-emerald-500 font-bold text-slate-700 transition">
+                       Kelas {k}
+                     </button>
+                   ))}
+                   {listKelasUnik.length === 0 && <p className="text-xs text-slate-400 col-span-2 text-center py-4">Belum ada murid terdaftar.</p>}
+                 </div>
+               )}
+
+               {/* View Profil: Pilih Murid dari Kelas */}
+               {viewProfilStage === 'murid' && (
+                 <div className="space-y-3">
+                   <button onClick={() => setViewProfilStage('kelas')} className="text-xs bg-slate-100 px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 font-bold"><i className="fa-solid fa-arrow-left"></i> Kembali Pilih Kelas</button>
+                   {muridList.filter(m => m.kelas === selectedKelasProfil).map(m => (
+                     <button key={m.id} onClick={() => { setSelectedMuridProfil(m); setViewProfilStage('detail'); }} className="w-full bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center hover:border-emerald-500 text-left transition">
+                       <span className="font-bold text-sm text-slate-700">{m.nama}</span>
+                       <i className="fa-solid fa-chevron-right text-slate-400"></i>
+                     </button>
+                   ))}
+                 </div>
+               )}
+
+               {/* View Profil: Detail Lengkap Murid */}
+               {viewProfilStage === 'detail' && selectedMuridProfil && (
+                 <div className="space-y-4">
+                   <button onClick={() => setViewProfilStage('murid')} className="text-xs bg-slate-100 px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 font-bold"><i className="fa-solid fa-arrow-left"></i> Kembali ke Daftar</button>
+                   
+                   <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
+                     <div className="w-12 h-12 bg-emerald-200 rounded-full flex items-center justify-center mx-auto mb-2 text-emerald-700 text-xl"><i className="fa-solid fa-user"></i></div>
+                     <h4 className="font-bold text-emerald-800 text-lg leading-tight">{selectedMuridProfil.nama}</h4>
+                     <p className="text-[11px] text-emerald-600 font-bold uppercase mt-1 tracking-wider">Kelas {selectedMuridProfil.kelas} • {selectedMuridProfil.domisili}</p>
+                   </div>
+                   
+                   <div className="space-y-3">
+                     <div className="border border-slate-200 rounded-xl p-3 bg-slate-50">
+                       <h5 className="text-[11px] font-bold text-slate-500 mb-2 border-b border-slate-200 pb-1 uppercase tracking-wider">Total Kehadiran:</h5>
+                       <div className="text-xs font-bold flex justify-around">
+                         <span className="text-emerald-600">Hadir: {listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Hadir').length}</span>
+                         <span className="text-amber-600">Izin: {listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Izin').length}</span>
+                         <span className="text-red-600">Alfa: {listAbsensi.filter(a => a.murid_id === selectedMuridProfil.id && a.status === 'Alfa').length}</span>
+                       </div>
+                     </div>
+                     <div className="border border-slate-200 rounded-xl p-3">
+                       <h5 className="text-[11px] font-bold text-slate-500 mb-2 border-b border-slate-100 pb-1 uppercase tracking-wider">Catatan Sikap:</h5>
+                       <ul className="text-xs space-y-1.5">
+                         {listPerilaku.filter(p => p.murid_id === selectedMuridProfil.id).map(p => (
+                           <li key={p.id} className="text-slate-700 flex gap-2"><i className="fa-solid fa-quote-left text-emerald-300 mt-0.5"></i> <span>{p.catatan}</span></li>
+                         ))}
+                         {listPerilaku.filter(p => p.murid_id === selectedMuridProfil.id).length === 0 && <span className="text-slate-400 italic">Belum ada catatan sikap.</span>}
+                       </ul>
+                     </div>
+                     <div className="border border-slate-200 rounded-xl p-3">
+                       <h5 className="text-[11px] font-bold text-slate-500 mb-2 border-b border-slate-100 pb-1 uppercase tracking-wider">Daftar Nilai:</h5>
+                       <ul className="text-xs space-y-2">
+                         {listNilai.filter(n => n.murid_id === selectedMuridProfil.id).map(n => (
+                           <li key={n.id} className="text-slate-700 flex justify-between items-center border-b border-slate-50 pb-1.5">
+                             <span>{n.pelajaran} <span className="bg-slate-100 px-1 py-0.5 rounded text-[9px] text-slate-500 uppercase ml-1">{n.jenis_ujian}</span></span>
+                             <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">{n.skor}</span>
+                           </li>
+                         ))}
+                         {listNilai.filter(n => n.murid_id === selectedMuridProfil.id).length === 0 && <span className="text-slate-400 italic">Belum ada input nilai.</span>}
+                       </ul>
+                     </div>
+                   </div>
+                 </div>
+               )}
+            </div>
+          </div>
         )}
       </main>
 
