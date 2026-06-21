@@ -28,6 +28,9 @@ export default function App() {
   const [listNilai, setListNilai] = useState([]);
   const [listBankSoal, setListBankSoal] = useState([]);
   const [listJadwal, setListJadwal] = useState([]);
+  const [subTabAbsen, setSubTabAbsen] = useState('input'); 
+  const [rekapBulan, setRekapBulan] = useState('');
+  const [rekapKelas, setRekapKelas] = useState('');
   const [listSakuBatas, setListSakuBatas] = useState([]);
   const [listSakuTagihan, setListSakuTagihan] = useState([]);
   const [listCapaian, setListCapaian] = useState([]);
@@ -172,6 +175,65 @@ export default function App() {
       return false;
     }
     return true;
+  };
+
+  const exportAbsenPDF = (bulan, kelas) => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(`Arsip Presensi Murid - Kelas ${kelas}`, 14, 20);
+    doc.setFontSize(11);
+    doc.text(`Periode Bulan: ${bulan}`, 14, 28);
+    doc.text(`Nama Pengajar: ${user?.email || 'Ustadz'}`, 14, 34);
+    doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 40);
+
+    const muridDiKelas = muridList.filter(m => m.kelas === kelas);
+    const tableData = [];
+
+    muridDiKelas.forEach(m => {
+      const absensMurid = listAbsensi.filter(a => {
+        if (a.murid_id !== m.id) return false;
+        const dateObj = new Date(a.tanggal);
+        const namaBulan = dateObj.toLocaleDateString('id-ID', { month: 'long' });
+        return namaBulan.toLowerCase() === bulan.toLowerCase();
+      });
+
+      const hadir = absensMurid.filter(a => a.status === 'Hadir' || a.status === 'H').length;
+      const izin = absensMurid.filter(a => a.status === 'Izin' || a.status === 'I').length;
+      const alfa = absensMurid.filter(a => a.status === 'Alfa' || a.status === 'A').length;
+
+      tableData.push([m.nama, `${hadir} x`, `${izin} x`, `${alfa} x`]);
+    });
+
+    doc.autoTable({
+      startY: 46,
+      head: [['Nama Murid', 'Hadir (H)', 'Izin (I)', 'Alfa (A)']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [5, 150, 105] }
+    });
+    doc.save(`Arsip_Presensi_Kelas_${kelas}_Bulan_${bulan}.pdf`);
+  };
+
+  const shareAbsenWA = (bulan, kelas) => {
+    let text = `*ARSIP PRESENSI MURID - KELAS ${kelas}*\n📅 *Bulan:* ${bulan}\n👨‍🏫 *Pengajar:* ${user?.email || 'Ustadz'}\n\n`;
+    
+    const muridDiKelas = muridList.filter(m => m.kelas === kelas);
+    muridDiKelas.forEach(m => {
+      const absensMurid = listAbsensi.filter(a => {
+        if (a.murid_id !== m.id) return false;
+        const dateObj = new Date(a.tanggal);
+        const namaBulan = dateObj.toLocaleDateString('id-ID', { month: 'long' });
+        return namaBulan.toLowerCase() === bulan.toLowerCase();
+      });
+
+      const hadir = absensMurid.filter(a => a.status === 'Hadir' || a.status === 'H').length;
+      const izin = absensMurid.filter(a => a.status === 'Izin' || a.status === 'I').length;
+      const alfa = absensMurid.filter(a => a.status === 'Alfa' || a.status === 'A').length;
+
+      text += `👤 *${m.nama}*\n   - Hadir: ${hadir}x\n   - Izin: ${izin}x\n   - Alfa: ${alfa}x\n\n`;
+    });
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`);
   };
 
   const handleInstallPWA = async () => {
