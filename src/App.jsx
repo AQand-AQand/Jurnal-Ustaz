@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const SUPABASE_URL = "https://gjfdxqhwwytcgylokksq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_1SSrr1ebYfBvZ7V60egzfg__Q_wz_Pm";
