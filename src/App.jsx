@@ -778,7 +778,21 @@ export default function App() {
                   <div className="bg-white rounded-2xl border shadow-sm p-5 space-y-4">
                      <div className="flex justify-between items-start border-b pb-3">
                         <div>
-                           <h2 className="text-lg font-bold text-slate-800">{selectedMuridRapor.nama}</h2>
+                           {/* Cari bagian ini di dalam Rapor Tampilan (di bawah raporKelas && selectedMuridRapor) */}
+<div className="flex justify-between items-start border-b pb-3">
+  <div>
+    <h2 className="text-lg font-bold text-slate-800">{selectedMuridRapor.nama}</h2>
+    <p className="text-xs text-slate-400 font-medium">Kelas {selectedMuridRapor.kelas} | Kamar: {selectedMuridRapor.domisili || '-'}</p>
+  </div>
+  <div className="flex flex-col items-end gap-1.5">
+    <button onClick={() => setSelectedMuridRapor(null)} className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-600 font-bold uppercase tracking-wider">Kembali</button>
+    <div className="flex gap-1">
+       <button onClick={() => exportRaporPDF(selectedMuridRapor)} className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1.5 rounded font-bold shadow transition"><i className="fa-solid fa-file-pdf"></i> PDF</button>
+       <button onClick={() => shareRaporWA(selectedMuridRapor)} className="text-[10px] bg-green-500 hover:bg-green-600 text-white px-2 py-1.5 rounded font-bold shadow transition"><i className="fa-brands fa-whatsapp"></i> WA</button>
+    </div>
+  </div>
+</div>
+                          
                            <p className="text-xs text-slate-400 font-medium">Kelas {selectedMuridRapor.kelas} | Kamar: {selectedMuridRapor.domisili || '-'}</p>
                         </div>
                         <button onClick={() => setSelectedMuridRapor(null)} className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-600 font-bold uppercase tracking-wider">Kembali</button>
@@ -980,12 +994,19 @@ export default function App() {
                   )}
 
                   {nilaiKelas && !selectedMuridNilai && (
-                    <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
-                      <div className="flex justify-between items-center border-b pb-2">
-                        <h3 className="font-bold text-slate-800 text-sm">Pilih Santri Kelas {nilaiKelas}</h3>
-                        <button onClick={() => setNilaiKelas('')} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded font-bold">Kembali</button>
-                      </div>
-                      <div className="space-y-1.5">
+  <div className="bg-white p-5 rounded-2xl border shadow-sm space-y-3">
+    <div className="flex flex-col gap-2 border-b pb-3">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold text-slate-800 text-sm">Pilih Santri Kelas {nilaiKelas}</h3>
+        <button onClick={() => setNilaiKelas('')} className="text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded font-bold">Kembali</button>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => exportNilaiKelasPDF(nilaiKelas)} className="flex-1 text-[10px] bg-red-500 text-white px-2 py-2 rounded-lg font-bold shadow hover:bg-red-600 transition"><i className="fa-solid fa-file-pdf"></i> Cetak PDF Nilai Kelas</button>
+        <button onClick={() => shareNilaiKelasWA(nilaiKelas)} className="flex-1 text-[10px] bg-green-500 text-white px-2 py-2 rounded-lg font-bold shadow hover:bg-green-600 transition"><i className="fa-brands fa-whatsapp"></i> Share WA Kelas</button>
+      </div>
+    </div>
+    {/* Biarkan mapping tombol muridList di bawahnya seperti biasa */}
+    <div className="space-y-1.5">
                         {muridList.filter(m => m.kelas === nilaiKelas).map(m => (
                           <button key={m.id} onClick={() => setSelectedMuridNilai(m)} className="w-full bg-slate-50 p-2.5 rounded-xl border text-left font-semibold text-sm text-slate-700 hover:bg-emerald-50">{m.nama}</button>
                         ))}
@@ -1089,15 +1110,17 @@ export default function App() {
                       listBankSoal.map(s => (
                          <div key={s.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3 relative">
                             <div className="flex justify-between items-start mb-2 border-b pb-2">
-                               <div>
-                                  <h4 className="text-sm font-bold text-slate-800">{s.pelajaran}</h4>
-                                  <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold">Kelas {s.kelas}</span>
-                               </div>
-                               <div className="flex gap-2">
-                                  <button onClick={() => handleEditSoal(s)} className="text-emerald-500 hover:text-emerald-700 bg-emerald-50 p-1.5 rounded"><i className="fa-solid fa-pen text-[10px]"></i></button>
-                                  <button onClick={() => handleHapusSoal(s.id)} className="text-red-400 hover:text-red-600 bg-red-50 p-1.5 rounded"><i className="fa-solid fa-trash text-[10px]"></i></button>
-                               </div>
-                            </div>
+  <div>
+    <h4 className="text-sm font-bold text-slate-800">{s.pelajaran}</h4>
+    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold">Kelas {s.kelas}</span>
+  </div>
+  <div className="flex gap-1.5">
+    <button onClick={() => exportSoalPDF(s)} className="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded" title="Cetak PDF"><i className="fa-solid fa-file-pdf text-[10px]"></i></button>
+    <button onClick={() => shareSoalWA(s)} className="text-green-600 hover:text-green-800 bg-green-50 p-1.5 rounded" title="Share WA"><i className="fa-brands fa-whatsapp text-[10px]"></i></button>
+    <button onClick={() => handleEditSoal(s)} className="text-emerald-500 hover:text-emerald-700 bg-emerald-50 p-1.5 rounded" title="Edit Soal"><i className="fa-solid fa-pen text-[10px]"></i></button>
+    <button onClick={() => handleHapusSoal(s.id)} className="text-red-400 hover:text-red-600 bg-red-50 p-1.5 rounded" title="Hapus Soal"><i className="fa-solid fa-trash text-[10px]"></i></button>
+  </div>
+</div>
                             <p className="text-xs text-slate-600 whitespace-pre-wrap line-clamp-3">{s.isi_soal}</p>
                          </div>
                       ))
