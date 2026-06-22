@@ -171,15 +171,14 @@ export default function App() {
         
         {/* TAB 3: ABSEN */}
         {activeTab === 'absen' && (
-          <AbsenTab 
-            listAbsensi={listAbsensi}
-            setListAbsensi={setListAbsensi}
-            muridList={muridList}
-            listJadwal={listJadwal}
-            user={user}
-            isOffline={isOffline}
-          />
-        )}
+  <AbsenTab 
+    muridList={muridList} 
+    listAbsensi={listAbsensi} 
+    setListAbsensi={setListAbsensi} 
+    user={user} 
+    checkConnection={checkConnection}
+  />
+)}
 
         {/* TAB 4: BUKU SAKU */}
         {activeTab === 'saku' && (
