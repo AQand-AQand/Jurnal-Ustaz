@@ -7,12 +7,30 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Menghilangkan kedipan biru saat tombol ditekan di layar sentuh HP */
-  -webkit-tap-highlight-color: transparent; 
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Menyembunyikan scrollbar agar tampilan lebih bersih seperti aplikasi */
 ::-webkit-scrollbar {
   width: 0px;
   background: transparent;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease-out;
 }
